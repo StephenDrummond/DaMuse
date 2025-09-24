@@ -1,19 +1,23 @@
-from yt_dlp import YoutubeDL
+import yt_dlp
+import asyncio
 
-YDL_OPTIONS = {
-    "format": "bestaudio/best",
-    "noplaylist": True,
-    "quiet": True,
+ytdl_format_options = {
+    'format': 'bestaudio/best',
+    'noplaylist': True,
+    'quiet': True,
+    'default_search': 'ytsearch',
 }
 
-def get_youtube_url(search: str) -> str:
-    """
-    Searches YouTube for a query and returns the direct audio URL.
-    """
-    with YoutubeDL(YDL_OPTIONS) as ydl:
-        try:
-            info = ydl.extract_info(f"ytsearch:{search}", download=False)["entries"][0]
-            return info["url"]
-        except Exception as e:
-            print(f"[YouTube Error] {e}")
-            return None
+ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
+
+class YTDLSource:
+    @staticmethod
+    async def from_url(url, loop=None, stream=False):
+        loop = loop or asyncio.get_event_loop()
+        info = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+        if "entries" in info:
+            info = info["entries"][0]  # first result
+        return {
+            "title": info["title"],
+            "url": info["url"] if stream else ytdl.prepare_filename(info)
+        }
