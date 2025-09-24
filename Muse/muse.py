@@ -11,6 +11,9 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 intents = discord.Intents.default()
 intents.message_content = True
 
+FFMPEG_PATH = os.path.join(os.getcwd(), "ffmpeg", "bin", "ffmpeg.exe")
+print(FFMPEG_PATH)
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 logging.basicConfig(level=logging.INFO)
