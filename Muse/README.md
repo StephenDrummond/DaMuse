@@ -35,7 +35,7 @@ Perfect for:
 ## 📂 Project Structure
 my_music_bot/
 
-├── bot.py                  # Main bot entry point
+├── muse.py                  # Main bot entry point
 
 ├── cogs/                   # Command modules
 
