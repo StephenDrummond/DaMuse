@@ -55,7 +55,7 @@ class Music(commands.Cog):
     @commands.command()
     async def skip(self, ctx):
         if ctx.voice_client.is_playing():
-            
+            ctx.voice_client.stop()
 
     async def _play_next_song(self, ctx):
         if not queues[ctx.guild.id]:
