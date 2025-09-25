@@ -1,7 +1,5 @@
 import asyncio
 import os
-import queue
-
 import discord
 from discord.ext import commands
 from utils.youtube import YTDLSource
@@ -17,6 +15,7 @@ FFMPEG_PATH = os.path.join(os.getcwd(), "ffmpeg", "bin", "ffmpeg.exe")
 
 class Music(commands.Cog):
     def __init__(self, bot):
+        self.stop_music = False
         self.bot = bot
 
     @commands.command()
@@ -57,7 +56,17 @@ class Music(commands.Cog):
         if ctx.voice_client.is_playing():
             ctx.voice_client.stop()
 
+    @commands.command()
+    async def stop(self, ctx):
+        if ctx.voice_client.is_playing():
+            self.stop_music = True
+            ctx.voice_client.stop()
+
     async def _play_next_song(self, ctx):
+        if self.stop_music:
+            self.stop_music = False
+            return
+
         if not queues[ctx.guild.id]:
             await ctx.send("No more songs queued.")
             return
