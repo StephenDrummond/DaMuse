@@ -6,7 +6,7 @@ class General(commands.Cog):
 
     @commands.command()
     async def hello(self, ctx):
-        await ctx.send(f"Hello {ctx.author}! You are a member of {ctx.guild.name}")
+        await ctx.send(f"Hello {ctx.author}!")
 
 async def setup(bot):
     await bot.add_cog(General(bot))

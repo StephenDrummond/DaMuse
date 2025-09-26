@@ -63,12 +63,17 @@ class Music(commands.Cog):
             ctx.voice_client.stop()
 
     async def _play_next_song(self, ctx):
+        if hasattr(self, 'idle_task') and not self. idle_task.done():
+            self.idle_task.cancel()
+
         if self.stop_music:
             self.stop_music = False
+            await ctx.voice_client.disconnect()
             return
 
         if not queues[ctx.guild.id]:
             await ctx.send("No more songs queued.")
+            self.idle_task = self.bot.loop.create_task(self.idle_disconnect(ctx))
             return
 
         info = queues[ctx.guild.id].popleft()  # Get the next song
@@ -91,6 +96,11 @@ class Music(commands.Cog):
         ctx.voice_client.play(source, after=after_playing)
         await ctx.send(f"Now playing: **{info['title']}**")
 
+    async def idle_disconnect(self, ctx):
+        await asyncio.sleep(180)  # wait 3 minutes
+        if ctx.voice_client and not ctx.voice_client.is_playing():
+            await ctx.voice_client.disconnect()
+            await ctx.send("Disconnected due to inactivity.")
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
