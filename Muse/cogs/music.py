@@ -72,7 +72,7 @@ class Music(commands.Cog):
             return
 
         info = queues[ctx.guild.id].popleft()  # Get the next song
-        source = discord.FFmpegPCMAudio(
+        source = await discord.FFmpegOpusAudio.from_probe(
             info["url"],
             executable=FFMPEG_PATH,
             **FFMPEG_OPTIONS

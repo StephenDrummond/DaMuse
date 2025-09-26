@@ -14,6 +14,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 logging.basicConfig(level=logging.INFO)
+logging.getLogger("discord.player").setLevel(logging.WARNING)
 
 @bot.event
 async def on_ready():
