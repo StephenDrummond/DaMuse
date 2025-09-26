@@ -1,5 +1,4 @@
 import yt_dlp
-import asyncio
 
 ytdl_format_options = {
     'format': 'bestaudio/best',

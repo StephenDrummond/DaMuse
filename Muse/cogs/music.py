@@ -1,7 +1,5 @@
 import asyncio
 import os
-import queue
-
 import discord
 from discord.ext import commands
 from utils.youtube import YTDLSource
