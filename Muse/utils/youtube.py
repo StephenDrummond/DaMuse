@@ -16,11 +16,14 @@ ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 
 class YTDLSource:
     @staticmethod
-    async def from_url(url, stream=False):
-        info = ytdl.extract_info(url, download=False)
+    def from_url_sync(url, stream=False):
+        """Blocking call — runs in a separate thread."""
+        info = ytdl.extract_info(url, download=not stream)
         if "entries" in info:
             info = info["entries"][0]  # first result
         return {
             "title": info["title"],
-            "url": info["url"] if stream else ytdl.prepare_filename(info)
+            "url": info["url"] if stream else ytdl.prepare_filename(info),
+            "duration": info.get("duration", 0),
+            "webpage_url": info.get("webpage_url", url)
         }
