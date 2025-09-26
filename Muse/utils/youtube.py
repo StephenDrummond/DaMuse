@@ -13,8 +13,7 @@ ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 class YTDLSource:
     @staticmethod
     async def from_url(url, stream=False):
-        loop = asyncio.get_running_loop()
-        info = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+        info = ytdl.extract_info(url, download=False)
         if "entries" in info:
             info = info["entries"][0]  # first result
         return {

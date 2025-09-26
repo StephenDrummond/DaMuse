@@ -55,7 +55,7 @@ class Music(commands.Cog):
     @commands.command()
     async def skip(self, ctx):
         if ctx.voice_client.is_playing():
-            
+            ctx.voice_client.stop()
 
     async def _play_next_song(self, ctx):
         if not queues[ctx.guild.id]:
@@ -63,10 +63,10 @@ class Music(commands.Cog):
             return
 
         info = queues[ctx.guild.id].popleft()  # Get the next song
-        source = discord.FFmpegPCMAudio(
+        source = await discord.FFmpegOpusAudio.from_probe(
             info["url"],
             executable=FFMPEG_PATH,
-            **FFMPEG_OPTIONS
+            **FFMPEG_OPTIONS,
         )
 
         def after_playing(error):
