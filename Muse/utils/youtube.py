@@ -1,5 +1,7 @@
 import yt_dlp
 
+from music_state.queues import queues
+
 ytdl_format_options = {
     'format': 'bestaudio/best',
     'noplaylist': True,
@@ -16,11 +18,24 @@ ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 
 class YTDLSource:
     @staticmethod
-    async def from_url(url, stream=False):
+    async def from_url(url, ctx, music_cog, stream=True):
         info = ytdl.extract_info(url, download=False)
         if "entries" in info:
             info = info["entries"][0]  # first result
-        return {
+        info = {
             "title": info["title"],
             "url": info["url"] if stream else ytdl.prepare_filename(info)
         }
+
+        if not info:
+            await ctx.send("Couldn't find anything.")
+            return
+
+        queues[ctx.guild.id].append(info)
+
+        if ctx.voice_client and not ctx.voice_client.is_playing():
+            await music_cog._play_next_song(ctx)
+        else:
+            await ctx.send(f"Queueing: **{info['title']}**")
+
+
