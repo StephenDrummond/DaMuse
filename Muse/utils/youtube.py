@@ -19,7 +19,7 @@ ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 
 class YTDLSource:
     @staticmethod
-    async def from_url(url, ctx, music_cog, stream=True):
+    async def from_url(url, ctx, stream=True):
         """
         Extract audio info from URL or search term,
         add it to the queue, and start playback if not playing.
@@ -39,8 +39,5 @@ class YTDLSource:
 
         queues[ctx.guild.id].append(info)  # Add to guild's queue
 
-        # If nothing playing, start playback
-        if ctx.voice_client and not ctx.voice_client.is_playing():
-            await music_cog._play_next_song(ctx)
-        else:
-            await ctx.send(f"Queueing: **{info['title']}**")
+        if ctx.voice_client and ctx.voice_client.is_playing():
+            await ctx.send(f"Queued **{info['title']}**")

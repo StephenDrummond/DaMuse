@@ -7,6 +7,15 @@ class ChannelEvents(commands.Cog):
         self.bot = bot
 
     @commands.Cog.listener()
+    async def on_ready(self):
+        for guild in self.bot.guilds:
+            for channel in guild.voice_channels:  # iterate all voice channels
+                if channel.members:  # if channel has members
+                    for member in channel.members:
+                        add_member(guild.id, channel.id, member.id)
+                        print(channels_and_members)
+
+    @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
         """ This event is called whenever a user's voice state changes. """
         guild_id = member.guild.id

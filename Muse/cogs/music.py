@@ -32,7 +32,7 @@ class Music(commands.Cog):
             return
 
         try:
-            await YTDLSource.from_url(search, ctx, self)  # Add song to queue
+            await YTDLSource.from_url(search, ctx)  # Add song to queue
         except Exception as e:
             await ctx.send(f"Error retrieving track: {e}")
             return
@@ -42,6 +42,10 @@ class Music(commands.Cog):
             await ctx.author.voice.channel.connect()
         elif ctx.voice_client.channel != ctx.author.voice.channel:
             await ctx.voice_client.move_to(ctx.author.voice.channel)
+
+        if ctx.voice_client and not ctx.voice_client.is_playing():
+            await self._play_next_song(ctx)
+
 
     @commands.command()
     async def skip(self, ctx):
