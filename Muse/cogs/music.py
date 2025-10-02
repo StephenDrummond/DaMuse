@@ -5,11 +5,13 @@ from discord.ext import commands
 from utils.youtube import YTDLSource
 from music_state.queues import queues
 
+# Options for FFmpeg to handle streaming
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn'
+    'options': '-vn'  # No video
 }
 
+# Path to ffmpeg executable
 FFMPEG_PATH = os.path.join(os.getcwd(), "ffmpeg", "bin", "ffmpeg.exe")
 
 
@@ -20,6 +22,7 @@ class Music(commands.Cog):
 
     @commands.command()
     async def play(self, ctx, *, search: str = None):
+        """Play a song by URL or search term."""
         if not ctx.author.voice:
             await ctx.send("You must be in a voice channel to play music!")
             return
@@ -29,12 +32,12 @@ class Music(commands.Cog):
             return
 
         try:
-            await YTDLSource.from_url(search, ctx, self)
+            await YTDLSource.from_url(search, ctx, self)  # Add song to queue
         except Exception as e:
             await ctx.send(f"Error retrieving track: {e}")
             return
 
-        # Connect bot to user's voice channel if not already connected
+        # Join or move to the user's voice channel
         if not ctx.voice_client:
             await ctx.author.voice.channel.connect()
         elif ctx.voice_client.channel != ctx.author.voice.channel:
@@ -42,16 +45,19 @@ class Music(commands.Cog):
 
     @commands.command()
     async def skip(self, ctx):
+        """Skip the currently playing song."""
         if ctx.voice_client.is_playing():
             ctx.voice_client.stop()
 
     @commands.command()
     async def stop(self, ctx):
+        """Stop playback and clear the queue."""
         if ctx.voice_client.is_playing():
             self.stop_music = True
             ctx.voice_client.stop()
 
     async def _play_next_song(self, ctx):
+        """Internal method to play the next song in the queue."""
         if self.stop_music:
             self.stop_music = False
             return
@@ -60,7 +66,9 @@ class Music(commands.Cog):
             await ctx.send("No more songs queued.")
             return
 
-        info = queues[ctx.guild.id].popleft()  # Get the next song
+        info = queues[ctx.guild.id].popleft()  # Get next song
+
+        # Create audio source for FFmpeg
         source = await discord.FFmpegOpusAudio.from_probe(
             info["url"],
             executable=FFMPEG_PATH,
@@ -68,6 +76,7 @@ class Music(commands.Cog):
         )
 
         def after_playing(error):
+            """Callback after song finishes."""
             if error:
                 print(f"Player error: {error}")
             coro = self._play_next_song(ctx)  # Play next song
@@ -82,4 +91,5 @@ class Music(commands.Cog):
 
 
 async def setup(bot):
+    """Load the Music cog."""
     await bot.add_cog(Music(bot))
