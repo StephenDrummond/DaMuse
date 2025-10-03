@@ -8,7 +8,7 @@ from music_state.queues import queues
 # Options for FFmpeg to handle streaming
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn'  # No video
+    'options': '-vn -f opus'  # No video
 }
 
 # Path to ffmpeg executable
