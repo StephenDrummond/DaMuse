@@ -1,3 +1,4 @@
 from collections import defaultdict, deque
+from typing import DefaultDict, Deque, Dict, Any
 
-queues = defaultdict(deque)
+queues: DefaultDict[int, Deque[Dict[str, Any]]] = defaultdict(deque)
