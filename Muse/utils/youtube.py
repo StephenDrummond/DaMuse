@@ -1,12 +1,15 @@
+from typing import Dict, Any
+
 import yt_dlp
+
 from music_state.queues import queues
 
 # yt_dlp configuration for audio extraction
-ytdl_format_options = {
+ytdl_format_options: Dict[str, Any] = {
     'format': 'bestaudio/best',  # Best audio quality
-    'noplaylist': True,          # Only single track
-    'quiet': True,               # Suppress output of errors in terminal
-    'default_search': 'ytsearch', # Search if not a URL
+    'noplaylist': True,  # Only single track
+    'quiet': True,  # Suppress yt-dlp output
+    'default_search': 'ytsearch',  # Search if not a URL
     'extractor_args': {
         'youtube': {
             'player_client': ['default', '-tv_simply'],  # Optimize extraction
@@ -14,30 +17,42 @@ ytdl_format_options = {
     },
 }
 
+# Initialize yt-dlp with the above options
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 
 
 class YTDLSource:
     @staticmethod
-    async def from_url(url, ctx, stream=True):
+    async def from_url(url: str, ctx: "commands.Context", stream: bool = True) -> None:
         """
         Extract audio info from URL or search term,
         add it to the queue, and start playback if not playing.
-        """
-        info = ytdl.extract_info(url, download=False)
-        if "entries" in info:
-            info = info["entries"][0]  # Take first search result
 
+        :param url: YouTube URL or search term.
+        :param ctx: Discord.py context object.
+        :param stream: Whether to stream the audio or download it.
+        """
+        # Extract information from the URL or search term
+        info: Dict[str, Any] = ytdl.extract_info(url, download=False)
+
+        # If multiple entries (e.g., a search), take the first one
+        if "entries" in info:
+            info = info["entries"][0]
+
+        # Build info dictionary with necessary details
         info = {
             "title": info["title"],  # Song title
-            "url": info["url"] if stream else ytdl.prepare_filename(info)  # Stream URL or filename
+            "url": info["url"] if stream else ytdl.prepare_filename(info)  # Stream URL or file path
         }
 
+        # Handle case where no information could be extracted
         if not info:
             await ctx.send("Couldn't find anything.")
             return
 
-        queues[ctx.guild.id].append(info)  # Add to guild's queue
+        # Add the track info to the guild's queue
+        queues[ctx.guild.id].append(info)
 
+        # If something is already playing, notify the user it's queued
         if ctx.voice_client and ctx.voice_client.is_playing():
             await ctx.send(f"Queued **{info['title']}**")
