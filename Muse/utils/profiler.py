@@ -20,4 +20,4 @@ class Profiler(object):
     @staticmethod
     def forget_preference(preference_score, last_updated, _lambda=0.05):
         delta = (datetime.today().date() - last_updated).days
-        return preference_score * math.exp(-delta * preference_score)
+        return preference_score * math.exp(-delta * _lambda)
