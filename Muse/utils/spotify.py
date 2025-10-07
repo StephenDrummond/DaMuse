@@ -85,18 +85,3 @@ def get_spotify_info(search_query: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         print(f"[Spotify API Error] {e}")
         return None
-
-
-if __name__ == "__main__":
-    # Prompt user for search query
-    search_query: str = input("Enter an artist or song name: ")
-
-    # Get Spotify information for query
-    result: Optional[Dict[str, Any]] = get_spotify_info(search_query)
-
-    # Display results
-    if result:
-        print(f"Result Type: {result['type']}")
-        for k, v in result.items():
-            if k != "type":
-                print(f"{k}: {v}")
