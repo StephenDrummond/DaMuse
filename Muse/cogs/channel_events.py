@@ -1,3 +1,5 @@
+from typing import Any
+
 import discord
 from discord.ext import commands
 
@@ -13,72 +15,91 @@ class ChannelEvents(commands.Cog):
     - Listens for voice state changes (join/leave/move).
     """
 
-    def __init__(self, bot):
-        self.bot = bot
+    def __init__(self, bot: commands.Bot) -> None:
+        """
+        Initializes the Cog with the bot instance.
+
+        :param bot: The Discord bot instance.
+        """
+        self.bot: commands.Bot = bot
 
     @commands.Cog.listener()
-    async def on_ready(self):
+    async def on_ready(self) -> None:
         """
-        Called once when the bot is ready and connected to Discord.
-        - Initializes in-memory tracking of all current voice channel members.
-        - Populates the database with all known guild members (to ensure consistency).
+        Called when the bot is fully connected and ready.
+        - Initializes in-memory tracking of all members currently in voice channels.
+        - Ensures all members in the guilds are recorded in the database.
         """
-        member_list: ([])  # (Unused — could be removed or used later if needed.)
+        member_list: list[Any]  # Placeholder list (currently unused)
+
         for guild in self.bot.guilds:
-            # Step 1: Add all members currently in voice channels to in-memory tracking.
+            # Sync current voice channel state to in-memory tracking
             self.add_channel_members_to_memory(guild)
-            # Step 2: Ensure all guild members are recorded in the database.
+
+            # Store all members of the guild into the database
             await self.add_all_guild_members_to_db(guild)
 
     @staticmethod
-    def add_channel_members_to_memory(guild: discord.Guild):
+    def add_channel_members_to_memory(guild: discord.Guild) -> None:
         """
-        Adds all members currently connected to voice channels to in-memory tracking.
-        This is run once at startup to sync the bot’s memory with the live server state.
+        Scans all voice channels in the guild and adds connected members
+        to in-memory tracking for quick reference.
+
+        :param guild: The Discord Guild to scan.
         """
         for channel in guild.voice_channels:
-            if channel.members:
+            if channel.members:  # If the channel has members connected
                 for member in channel.members:
-                    add_member(guild.id, channel.id, member.id)
-                # Print the current state of tracked members for debugging.
+                    add_member(guild.id, channel.id, member.id)  # Track member in memory
+                # Debug print to show current state of tracked members
                 print(channels_and_members)
 
-    async def add_all_guild_members_to_db(self, guild: discord.Guild):
+    async def add_all_guild_members_to_db(self, guild: discord.Guild) -> None:
         """
-        Ensures every guild member is present in the database.
-        Uses 'ON CONFLICT DO NOTHING' to avoid duplicate inserts.
+        Ensures all members of the guild are stored in the database.
+        Uses 'ON CONFLICT DO NOTHING' to avoid duplicate entries.
+
+        :param guild: The Discord Guild whose members should be added.
         """
         async for member in guild.fetch_members(limit=None):
             async with self.bot.pool.acquire() as connection:
-                await connection.execute("""
+                await connection.execute(
+                    """
                     INSERT INTO users (discord_id)
                     VALUES ($1)
                     ON CONFLICT (discord_id) DO NOTHING
-                """, member.id)
+                    """,
+                    member.id,
+                )
 
     @commands.Cog.listener()
-    async def on_voice_state_update(self, member, before, after):
+    async def on_voice_state_update(
+            self,
+            member: discord.Member,
+            before: discord.VoiceState,
+            after: discord.VoiceState
+    ) -> None:
         """
-        Triggered whenever a user's voice state changes (join/leave/move).
-        Updates the in-memory list to reflect the new state.
+        Called whenever a user's voice state changes (joins/leaves/moves channels).
+        Updates the in-memory tracking state accordingly.
 
-        :param member: The Discord Member whose voice state changed.
-        :param before: The previous VoiceState of the member.
-        :param after: The new VoiceState of the member.
+        :param member: The member whose voice state changed.
+        :param before: Previous voice state before change.
+        :param after: New voice state after change.
         """
-        guild_id = member.guild.id
+        guild_id: int = member.guild.id
 
-        # Case 1: User joins a voice channel
+        # Case 1: Member joins a voice channel
         if before.channel is None and after.channel is not None:
             add_member(guild_id, after.channel.id, member.id)
             print(f"{member} joined {after.channel}")
 
-        # Case 2: User leaves a voice channel
+        # Case 2: Member leaves a voice channel
         elif before.channel is not None and after.channel is None:
             remove_member(guild_id, before.channel.id, member.id)
             print(f"{member} left {before.channel}")
 
-        # Case 3: User moves between voice channels
+        # Case 3: Member moves between voice channels
         elif before.channel != after.channel:
             if before.channel:
                 remove_member(guild_id, before.channel.id, member.id)
@@ -86,13 +107,32 @@ class ChannelEvents(commands.Cog):
                 add_member(guild_id, after.channel.id, member.id)
             print(f"{member} moved from {before.channel} to {after.channel}")
 
-        # Debug: print updated in-memory tracking state
+        # Debug: Print current in-memory state for tracking
         print(channels_and_members)
 
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member) -> None:
+        """
+        Triggered when a new member joins any guild the bot is in.
+        Adds them to the database to ensure tracking.
 
-async def setup(bot):
+        :param member: The Discord Member who joined.
+        """
+        async with self.bot.pool.acquire() as connection:
+            await connection.execute(
+                """
+                INSERT INTO users (discord_id)
+                VALUES ($1)
+                ON CONFLICT (discord_id) DO NOTHING
+                """,
+                member.id,
+            )
+
+
+async def setup(bot: commands.Bot) -> None:
     """
-    Asynchronously adds this cog to the bot.
-    Called when the extension is loaded.
+    Adds the ChannelEvents cog to the bot.
+
+    :param bot: The bot instance to add the cog to.
     """
     await bot.add_cog(ChannelEvents(bot))

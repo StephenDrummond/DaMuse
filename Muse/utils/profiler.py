@@ -3,9 +3,6 @@ from datetime import datetime
 
 
 class Profiler(object):
-    def __init__(self, ctx):
-        self.ctx = ctx
-
     @staticmethod
     def boost_preference(preference_score, alpha=0.2):
         preference_score += alpha

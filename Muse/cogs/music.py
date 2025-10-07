@@ -1,9 +1,12 @@
 import asyncio
 import os
+
 import discord
 from discord.ext import commands
-from utils.youtube import YTDLSource
+
 from music_state.queues import queues
+from utils.profiler import Profiler
+from utils.youtube import YTDLSource
 
 # Options for FFmpeg to handle streaming
 FFMPEG_OPTIONS = {
@@ -19,6 +22,7 @@ class Music(commands.Cog):
     def __init__(self, bot):
         self.stop_music = False
         self.bot = bot
+        profiler = Profiler()
 
     @commands.command()
     async def play(self, ctx, *, search: str = None):
@@ -45,7 +49,6 @@ class Music(commands.Cog):
 
         if ctx.voice_client and not ctx.voice_client.is_playing():
             await self._play_next_song(ctx)
-
 
     @commands.command()
     async def skip(self, ctx):
