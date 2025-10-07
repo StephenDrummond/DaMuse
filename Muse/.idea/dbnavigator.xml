@@ -11,6 +11,9 @@
   </component>
   <component name="DBNavigator.Project.DatabaseAssistantManager">
     <assistants>
+      <assistant-state connection-id="e3c02341-4bac-49b7-83a5-dd3ea4fc0242" default-profile-name="" selected-conversation-id="" assistant-type="GENERIC" availability="UNAVAILABLE" acknowledgement="NONE">
+        <conversations />
+      </assistant-state>
       <assistant-state connection-id="220cecf1-278e-4889-a1cb-516da15e592d" default-profile-name="" selected-conversation-id="" assistant-type="GENERIC" availability="UNAVAILABLE" acknowledgement="NONE">
         <conversations />
       </assistant-state>
@@ -33,11 +36,11 @@
       <console name="db" type="STANDARD" schema="postgres" session="Main" />
     </connection>
     <connection id="220cecf1-278e-4889-a1cb-516da15e592d">
-      <console name="db" type="STANDARD" schema="public" session="Main"><![CDATA[SELECT column_name
+      <console name="db" type="STANDARD" schema="public" session="Main">SELECT column_name
 FROM information_schema.columns
 WHERE table_schema = 'public'
   AND table_name = 'users'
-ORDER BY ordinal_position;]]></console>
+ORDER BY ordinal_position;</console>
     </connection>
   </component>
   <component name="DBNavigator.Project.DatabaseEditorStateManager">
@@ -386,7 +389,7 @@ ORDER BY ordinal_position;]]></console>
     </connections>
     <browser-settings>
       <general>
-        <display-mode value="TABBED" />
+        <display-mode value="SIMPLE" />
         <navigation-history-size value="100" />
         <show-object-details value="false" />
         <enable-sticky-paths value="true" />
