@@ -35,8 +35,7 @@ async def run_sql_query(query):
 
 async def main():
     info = await run_sql_query("""
-        SELECT *
-        FROM users;
+        SELECT * FROM cron.job
     """)
     print(info)
 
