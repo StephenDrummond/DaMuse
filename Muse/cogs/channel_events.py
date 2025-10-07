@@ -1,4 +1,5 @@
 from discord.ext import commands
+
 from music_state.channel_members import channels_and_members, add_member, remove_member
 
 
@@ -8,12 +9,20 @@ class ChannelEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
+        member_list: ([])
         for guild in self.bot.guilds:  # go to every server that the bot is on
             for channel in guild.voice_channels:  # iterate all voice channels
-                if channel.members:  # if channel has members
+                if channel.members:  # if channel has members add them to memory
                     for member in channel.members:
                         add_member(guild.id, channel.id, member.id)
                         print(channels_and_members)
+            async for member in guild.fetch_members(limit=None):  # iterate all guide member lists
+                async with self.bot.pool.acquire() as connection:
+                    await connection.fetch("""
+                    INSERT INTO users (discord_id)
+                    VALUES ($1)
+                    ON CONFLICT (discord_id) DO NOTHING
+                    """, member.id)
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
