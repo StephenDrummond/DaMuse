@@ -1,15 +1,18 @@
 import os
+from typing import Optional, Dict, Any
 
 import spotipy
 from dotenv import load_dotenv
 from spotipy.oauth2 import SpotifyClientCredentials
 
+# Load environment variables from .env file
 load_dotenv()
 
-SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
-SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+# Spotify API credentials
+SPOTIFY_CLIENT_ID: Optional[str] = os.getenv("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET: Optional[str] = os.getenv("SPOTIFY_CLIENT_SECRET")
 
-# Authenticate
+# Authenticate with Spotify using client credentials flow
 client_credentials_manager = SpotifyClientCredentials(
     client_id=SPOTIFY_CLIENT_ID,
     client_secret=SPOTIFY_CLIENT_SECRET
@@ -17,23 +20,29 @@ client_credentials_manager = SpotifyClientCredentials(
 sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
 
 
-def get_spotify_info(search_query: str) -> dict:
+def get_spotify_info(search_query: str) -> Optional[Dict[str, Any]]:
     """
-    First tries to find an artist matching the search query.
-    If not found, tries to find a track.
-    Returns either artist info (with top 5 songs) or track info with genres.
+    Search for an artist or track on Spotify and return relevant information.
+
+    Tries to find an artist matching the search query first.
+    If no artist is found, tries to find a track.
+    Returns a dictionary containing either artist info (with top tracks)
+    or track info (with genres).
+
+    :param search_query: The search term (artist name or track name).
+    :return: Dictionary of artist/track data, or None if no results found or error occurs.
     """
     try:
-        # Search for artist first
-        artist_results = sp.search(q=f"artist:{search_query}", type="artist", limit=1)
-        artists = artist_results.get("artists", {}).get("items", [])
+        # Search for artist matching the query
+        artist_results: Dict[str, Any] = sp.search(q=f"artist:{search_query}", type="artist", limit=1)
+        artists: list = artist_results.get("artists", {}).get("items", [])
 
         if artists:
-            artist = artists[0]
+            artist: Dict[str, Any] = artists[0]
 
-            # Get top tracks
-            top_tracks_data = sp.artist_top_tracks(artist["id"], country="US")
-            top_tracks = [track["name"] for track in top_tracks_data.get("tracks", [])[:5]]
+            # Get top tracks for the artist
+            top_tracks_data: Dict[str, Any] = sp.artist_top_tracks(artist["id"], country="US")
+            top_tracks: list[str] = [track["name"] for track in top_tracks_data.get("tracks", [])[:5]]
 
             return {
                 "type": "artist",
@@ -46,13 +55,15 @@ def get_spotify_info(search_query: str) -> dict:
             }
 
         # If no artist found, search for track
-        track_results = sp.search(q=f"track:{search_query}", type="track", limit=1)
-        tracks = track_results.get("tracks", {}).get("items", [])
+        track_results: Dict[str, Any] = sp.search(q=f"track:{search_query}", type="track", limit=1)
+        tracks: list = track_results.get("tracks", {}).get("items", [])
 
         if tracks:
-            track = tracks[0]
-            artist_id = track["artists"][0]["id"]
-            artist = sp.artist(artist_id)
+            track: Dict[str, Any] = tracks[0]
+            artist_id: str = track["artists"][0]["id"]
+
+            # Get artist info for the track
+            artist: Dict[str, Any] = sp.artist(artist_id)
 
             return {
                 "type": "track",
@@ -77,9 +88,13 @@ def get_spotify_info(search_query: str) -> dict:
 
 
 if __name__ == "__main__":
-    search_query = input("Enter an artist or song name: ")
-    result = get_spotify_info(search_query)
+    # Prompt user for search query
+    search_query: str = input("Enter an artist or song name: ")
 
+    # Get Spotify information for query
+    result: Optional[Dict[str, Any]] = get_spotify_info(search_query)
+
+    # Display results
     if result:
         print(f"Result Type: {result['type']}")
         for k, v in result.items():
