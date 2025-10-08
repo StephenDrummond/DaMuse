@@ -1,7 +1,26 @@
+import os
 from typing import Any, Dict, Optional, List
 
+import spotipy
+from dotenv import load_dotenv
+from spotipy.oauth2 import SpotifyClientCredentials
 
-def search_artist(sp, search_query: str) -> Optional[Dict[str, Any]]:
+# Load environment variables from .env file
+load_dotenv()
+
+# Spotify API credentials
+SPOTIFY_CLIENT_ID: Optional[str] = os.getenv("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET: Optional[str] = os.getenv("SPOTIFY_CLIENT_SECRET")
+
+# Authenticate with Spotify using client credentials flow
+client_credentials_manager = SpotifyClientCredentials(
+    client_id=SPOTIFY_CLIENT_ID,
+    client_secret=SPOTIFY_CLIENT_SECRET
+)
+sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
+
+
+def search_artist(search_query: str) -> Optional[Dict[str, Any]]:
     """Search for an artist and return relevant data."""
     artist_results: Dict[str, Any] = sp.search(q=f"artist:{search_query}", type="artist", limit=1)
     artists: List[Dict[str, Any]] = artist_results.get("artists", {}).get("items", [])
@@ -24,7 +43,7 @@ def search_artist(sp, search_query: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def search_track(sp, search_query: str) -> Optional[Dict[str, Any]]:
+def search_track(search_query: str) -> Optional[Dict[str, Any]]:
     """Search for a track and return relevant data."""
     track_results: Dict[str, Any] = sp.search(q=f"track:{search_query}", type="track", limit=1)
     tracks: List[Dict[str, Any]] = track_results.get("tracks", {}).get("items", [])
@@ -51,19 +70,24 @@ def search_track(sp, search_query: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def get_spotify_info(sp, search_query: str) -> Optional[Dict[str, Any]]:
+def get_spotify_info(search_query: str) -> Optional[Dict[str, Any]]:
     """Search Spotify for an artist or track and return data."""
     try:
-        artist_info = search_artist(sp, search_query)
+        artist_info = search_artist(search_query)
         if artist_info:
             return artist_info
 
-        track_info = search_track(sp, search_query)
+        track_info = search_track(search_query)
         if track_info:
             return track_info
-
+        
         print("No results found.")
         return None
     except Exception as e:
         print(f"Error fetching Spotify data: {e}")
         return None
+
+
+if __name__ == "__main__":
+    info = get_spotify_info("Money Pink Floyd")
+    print(info)
