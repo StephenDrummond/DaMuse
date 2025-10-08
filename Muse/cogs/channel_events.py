@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 
 from music_state.channel_members import channels_and_members, add_member, remove_member
+from utils.librarian import Librarian
 
 
 class ChannelEvents(commands.Cog):
@@ -16,12 +17,8 @@ class ChannelEvents(commands.Cog):
     """
 
     def __init__(self, bot: commands.Bot) -> None:
-        """
-        Initializes the Cog with the bot instance.
-
-        :param bot: The Discord bot instance.
-        """
         self.bot: commands.Bot = bot
+        self.librarian: Librarian = Librarian()
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -30,6 +27,8 @@ class ChannelEvents(commands.Cog):
         - Initializes in-memory tracking of all members currently in voice channels.
         - Ensures all members in the guilds are recorded in the database.
         """
+        await self.librarian.db.init_pool()
+
         member_list: list[Any]  # Placeholder list (currently unused)
 
         for guild in self.bot.guilds:
@@ -62,15 +61,7 @@ class ChannelEvents(commands.Cog):
         :param guild: The Discord Guild whose members should be added.
         """
         async for member in guild.fetch_members(limit=None):
-            async with self.bot.pool.acquire() as connection:
-                await connection.execute(
-                    """
-                    INSERT INTO users (discord_id)
-                    VALUES ($1)
-                    ON CONFLICT (discord_id) DO NOTHING
-                    """,
-                    member.id,
-                )
+            await self.librarian.add_member_to_db(member.id)
 
     @commands.Cog.listener()
     async def on_voice_state_update(
@@ -118,15 +109,8 @@ class ChannelEvents(commands.Cog):
 
         :param member: The Discord Member who joined.
         """
-        async with self.bot.pool.acquire() as connection:
-            await connection.execute(
-                """
-                INSERT INTO users (discord_id)
-                VALUES ($1)
-                ON CONFLICT (discord_id) DO NOTHING
-                """,
-                member.id,
-            )
+        await self.librarian.db.execute(
+        )
 
 
 async def setup(bot: commands.Bot) -> None:
