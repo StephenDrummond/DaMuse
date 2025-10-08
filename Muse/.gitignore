@@ -1,3 +1,6 @@
 .env
 utils/.cache
 db/db.py
+.xml
+.iml
+.pyc
