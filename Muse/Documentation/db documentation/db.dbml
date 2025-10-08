@@ -1,76 +1,71 @@
-Table users {
-  id integer [primary key]
-  discord_id bigint [unique, not null]
-  username varchar
-}
+-- Users table
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    discord_id BIGINT UNIQUE NOT NULL,
+    username VARCHAR
+);
 
-Table artists {
-  id integer [primary key]
-  name varchar [not null]
-}
+-- Artists table
+CREATE TABLE artists (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR NOT NULL
+);
 
-Table genres {
-  id integer [primary key]
-  name varchar [not null, unique]
-}
+-- Genres table
+CREATE TABLE genres (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR NOT NULL UNIQUE
+);
 
-Table artist_genres {
-  artist_id integer [not null]
-  genre_id integer [not null]
-  indexes {
-    (artist_id, genre_id) [pk]
-  }
-}
+-- Artist Genres join table
+CREATE TABLE artist_genres (
+    artist_id INT NOT NULL,
+    genre_id INT NOT NULL,
+    PRIMARY KEY (artist_id, genre_id),
+    FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE,
+    FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE
+);
 
-Table songs {
-  id integer [primary key]
-  title varchar [not null]
-  artist_id integer [not null]
-}
+-- Songs table
+CREATE TABLE songs (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR NOT NULL,
+    artist_id INT NOT NULL,
+    FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+);
 
-Table song_user_likes {
-  user_id integer [not null]
-  song_id integer [not null]
-  liked boolean [default: true]
-  liked_at timestamp [default: 'CURRENT_TIMESTAMP']
-  preference_score float [default: 0.5, not null, note: "Must be <= 1.0"]
+-- Song User Likes table
+CREATE TABLE song_user_likes (
+    user_id INT NOT NULL,
+    song_id INT NOT NULL,
+    liked BOOLEAN DEFAULT TRUE,
+    liked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    preference_score FLOAT DEFAULT 0.5 CHECK (preference_score <= 1.0),
+    PRIMARY KEY (user_id, song_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+);
 
-  indexes {
-    (user_id, song_id) [pk]
-  }
-}
+-- Genre User Likes table
+CREATE TABLE genre_user_likes (
+    user_id INT NOT NULL,
+    genre_id INT NOT NULL,
+    liked BOOLEAN DEFAULT TRUE,
+    liked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    preference_score FLOAT DEFAULT 0.5 CHECK (preference_score <= 1.0),
+    PRIMARY KEY (user_id, genre_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (genre_id) REFERENCES genres(id) ON DELETE CASCADE
+);
 
-Table genre_user_likes {
-  user_id integer [not null]
-  genre_id integer [not null]
-  liked boolean [default: true]
-  liked_at timestamp [default: 'CURRENT_TIMESTAMP']
-  preference_score float [default: 0.5, not null, note: "Must be <= 1.0"]
-
-  indexes {
-    (user_id, genre_id) [pk]
-  }
-}
-
-Table artist_user_likes {
-  user_id integer [not null]
-  artist_id integer [not null]
-  liked boolean [default: true]
-  liked_at timestamp [default: 'CURRENT_TIMESTAMP']
-  preference_score float [default: 0.5, not null, note: "Must be <= 1.0"]
-
-  indexes {
-    (user_id, artist_id) [pk]
-  }
-}
-
-// Relationships
-Ref user_song_user: song_user_likes.user_id > users.id
-Ref user_song_song: song_user_likes.song_id > songs.id
-Ref song_artist: songs.artist_id > artists.id
-Ref user_genre_user: genre_user_likes.user_id > users.id
-Ref user_genre_genre: genre_user_likes.genre_id > genres.id
-Ref user_artist_user: artist_user_likes.user_id > users.id
-Ref user_artist_artist: artist_user_likes.artist_id > artists.id
-Ref artist_genre_artist: artist_genres.artist_id > artists.id
-Ref artist_genre_genre: artist_genres.genre_id > genres.id
+-- Artist User Likes table
+CREATE TABLE artist_user_likes (
+    user_id INT NOT NULL,
+    artist_id INT NOT NULL,
+    liked BOOLEAN DEFAULT TRUE,
+    liked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    preference_score FLOAT DEFAULT 0.5 CHECK (preference_score <= 1.0),
+    PRIMARY KEY (user_id, artist_id),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
+);
