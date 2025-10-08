@@ -1,5 +1,16 @@
+# Environment variables
 .env
+
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE / Project files
+*.iml
+*.xml
+.idea/
+.vscode/
+
+# Local cache or temp files
 utils/.cache
-.pyc
-.xml
-.iml
