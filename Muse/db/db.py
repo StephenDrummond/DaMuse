@@ -43,12 +43,12 @@ class Database:
         async with self.pool.acquire() as connection:
             return await connection.fetch(query, *args)
 
-    async def fetchval(self, query: str, *args: Any) -> Optional[Any]:
+    async def fetch_val(self, query: str, *args: Any) -> Optional[Any]:
         """Run a query that returns a single value."""
         async with self.pool.acquire() as connection:
             return await connection.fetchval(query, *args)
 
-    async def fetchrow(self, query: str, *args: Any) -> Optional[dict]:
+    async def fetch_row(self, query: str, *args: Any) -> Optional[dict]:
         """Run a query that returns a single row."""
         async with self.pool.acquire() as connection:
             return await connection.fetchrow(query, *args)
