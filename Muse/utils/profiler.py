@@ -123,7 +123,7 @@ class Profiler(object):
 
     async def log_user_skip_song(self, member: discord.Member, song: str) -> None:
         """User skipped a song."""
-        await self._handle_behavioural_event(member, song, alpha=-0.2, liked=True)
+        await self._handle_behavioural_event(member, song, alpha=-0.2, liked=False)
 
     async def log_user_listened_to(self, member: discord.Member, song: str, alpha: float = 0.1) -> None:
         """User listened to a song without skipping."""
