@@ -3,3 +3,7 @@ NFC chip mix
 Geospatial Mix
 
 Add metadata to songs and genres about mood etc.
+
+Smooth BPM and Energy transitions, prevents stark contrast between songs
+
+Vibe curation (Sing along/Disney/Throwback)
