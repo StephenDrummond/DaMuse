@@ -11,11 +11,13 @@ class Profiler(object):
     def __init__(self):
         self.db = Database()
 
+    async def create_db(self):
+        await self.db.init_pool()
+
     async def log_user_play_event(
             self,
             member: discord.Member,
             song: str,
-            start_preference_score: float = 0.5
     ) -> None:
         """
         Log that a user has played a song and update their preference profile.
@@ -38,7 +40,7 @@ class Profiler(object):
         member_id: int = member.id
 
         # Fetch song metadata from Spotify
-        info: dict[str, Any] = await get_spotify_info(song)  # assuming get_spotify_info is async
+        info: dict[str, Any] = get_spotify_info(song)  # assuming get_spotify_info is async
         song_name: str = info["name"]
         artist_name: str = info["artists"][0]
         genres: list[str] = info.get("genres", [])
@@ -122,3 +124,28 @@ class Profiler(object):
                 liked_at = $3;
         """
         await self.db.execute(query, user_id, target_id, liked_at)
+
+
+if __name__ == "__main__":
+    import asyncio
+
+
+    async def main():
+        profiler = Profiler()
+        await profiler.create_db()
+
+        # Fake Discord member for testing
+        class FakeMember:
+            id = 56
+
+        member = FakeMember()
+
+        # Test song name
+        test_song = "Money Pink Floyd"
+
+        print(f"Logging play event for song: {test_song}")
+        await profiler.log_user_play_event(member, test_song)
+        print("Done logging play event.")
+
+
+    asyncio.run(main())
