@@ -14,11 +14,7 @@ class Profiler(object):
     async def create_db(self):
         await self.db.init_pool()
 
-    async def log_user_play_event(
-            self,
-            member: discord.Member,
-            song: str,
-    ) -> None:
+    async def log_user_play_event(self, member: discord.Member, song: str, alpha: float = 0.2) -> None:
         """
         Log that a user has played a song and update their preference profile.
 
@@ -30,22 +26,19 @@ class Profiler(object):
         Args:
             member (discord.Member): The Discord user who played the song.
             song (str): The name of the song played.
-            start_preference_score (float, optional): Initial preference score if none exists.
-                Defaults to 0.5.
-
+            alpha (float) : The increment by which preference score is updated by
         Returns:
             None
         """
-        # Extract user ID
         member_id: int = member.id
 
         # Fetch song metadata from Spotify
-        info: dict[str, Any] = get_spotify_info(song)  # assuming get_spotify_info is async
+        info: dict[str, Any] = await get_spotify_info(song)
         song_name: str = info["name"]
         artist_name: str = info["artists"][0]
         genres: list[str] = info.get("genres", [])
 
-        # Fetch database IDs for the song and artist
+        # Fetch IDs for the song and artist from the database
         song_id: int = await self.db.fetch_val("SELECT id FROM songs WHERE title = $1", song_name)
         artist_id: int = await self.db.fetch_val("SELECT id FROM artists WHERE name = $1", artist_name)
 
@@ -55,7 +48,8 @@ class Profiler(object):
             user_id=member_id,
             target_id=song_id,
             liked_at=datetime.today(),
-            target_column="song_id"
+            target_column="song_id",
+            alpha=alpha
         )
 
         # Insert or update artist preference record
@@ -64,7 +58,8 @@ class Profiler(object):
             user_id=member_id,
             target_id=artist_id,
             liked_at=datetime.today(),
-            target_column="artist_id"
+            target_column="artist_id",
+            alpha=alpha
         )
 
         for genre in genres:
@@ -74,13 +69,16 @@ class Profiler(object):
                 user_id=member_id,
                 target_id=genre_id,
                 liked_at=datetime.today(),
-                target_column="genre_id"
+                target_column="genre_id",
+                alpha=alpha
             )
 
-    async def log_user_like_song(self, member: discord.Member, song: str) -> None:
+    async def log_user_like_song(self, member: discord.Member, song: str, alpha=0.4) -> None:
         # Record that a user liked a song (e.g., to update preference profile or recommendations)
         # Boost the users preference_score for this song
-        ...
+        member_id = member.id
+
+        info = await get_spotify_info(song)
 
     async def log_user_dislike_song(self, member: discord.Member, song: str) -> None:
         # Record that a user disliked a song (e.g., to avoid similar songs in recommendations)
@@ -103,7 +101,8 @@ class Profiler(object):
             user_id: int,
             target_id: int,
             liked_at: datetime,
-            target_column: str
+            target_column: str,
+            alpha: float,
     ) -> None:
         """
         Inserts a like record into a table, or updates it on conflict.
@@ -119,7 +118,7 @@ class Profiler(object):
             INSERT INTO {table_name} (user_id, {target_column}, liked_at)
             VALUES ($1, $2, $3)
             ON CONFLICT (user_id, {target_column}) DO UPDATE
-            SET preference_score = {table_name}.preference_score + 0.2,
+            SET preference_score = LEAST({table_name}.preference_score + {alpha}, 1.0),
                 liked = true,
                 liked_at = $3;
         """
@@ -136,15 +135,21 @@ if __name__ == "__main__":
 
         # Fake Discord member for testing
         class FakeMember:
-            id = 56
+            id: int
 
-        member = FakeMember()
+            def __init__(self, num):
+                self.id = num
+
+        member1 = FakeMember(62)
+        member2 = FakeMember(64)
 
         # Test song name
-        test_song = "Money Pink Floyd"
+        test_song1 = "Money Pink Floyd"
+        test_song2 = "Rockafeller skank"
 
-        print(f"Logging play event for song: {test_song}")
-        await profiler.log_user_play_event(member, test_song)
+        print(f"Logging play event for song: {test_song1}")
+        await profiler.log_user_play_event(member1, test_song1)
+        await profiler.log_user_play_event(member2, test_song2)
         print("Done logging play event.")
 
 

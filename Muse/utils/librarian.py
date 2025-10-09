@@ -45,9 +45,9 @@ if __name__ == "__main__":
         librarian = Librarian()
         await librarian.create_db()
 
-        song = "money pink floyd"
+        song = "rockafeller skank"
 
-        info = spotify.get_spotify_info(song)
+        info = await spotify.get_spotify_info(song)
 
         class FakeMember:
             id = 1234567890
@@ -60,7 +60,8 @@ if __name__ == "__main__":
 
         await librarian.add_songs_to_db(title, artist_id)
 
-        await librarian.add_member_to_db(member.id)
+        await librarian.add_member_to_db(123456)
+        await librarian.add_member_to_db(234567)
 
         for genre in info["genres"]:
             await librarian.add_genre_to_db(genre)
