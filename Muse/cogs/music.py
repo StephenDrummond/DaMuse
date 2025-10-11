@@ -7,7 +7,7 @@ from discord.ext import commands
 
 from music_state.queues import queues
 from utils.librarian import Librarian
-from utils.youtube import YTDLSource
+from api.youtube import YTDLSource
 
 # Options for FFmpeg to handle streaming
 FFMPEG_OPTIONS: Dict[str, str] = {
