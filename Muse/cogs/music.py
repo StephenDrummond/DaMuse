@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 
 from music_state.queues import queues
-from utils.profiler import Profiler
+from utils.librarian import Librarian
 from utils.youtube import YTDLSource
 
 # Options for FFmpeg to handle streaming
@@ -28,7 +28,7 @@ class Music(commands.Cog):
         """
         self.stop_music: bool = False  # Flag to stop playback
         self.bot: commands.Bot = bot
-        profiler: Profiler = Profiler()  # Profiler instance (unused here)
+        profiler: Librarian = Librarian()  # Profiler instance (unused here)
 
     @commands.command()
     async def play(self, ctx: commands.Context, *, search: Optional[str] = None) -> None:
