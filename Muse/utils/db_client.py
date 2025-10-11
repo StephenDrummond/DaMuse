@@ -32,7 +32,7 @@ class DBClient(object):
         self, table: str, key_columns: list[str], update_columns: list[str], *values
     ):
         """
-        Generic UPSERT helper.
+        Generic UPSERT (insert or update) helper.
         """
         key_str = ", ".join(key_columns)
         update_str = ", ".join(f"{col} = EXCLUDED.{col}" for col in update_columns)
