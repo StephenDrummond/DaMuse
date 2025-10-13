@@ -32,7 +32,7 @@ class DBClient(object):
         self, table: str, key_columns: list[str], update_columns: list[str], *values
     ):
         """
-        
+
         Behavior:
         - If the record does NOT exist → inserts it with the given values.
         - If the record already exists → updates it.
@@ -41,7 +41,7 @@ class DBClient(object):
 
         Parameters:
             table (str): Name of the target database table.
-            key_columns (list[str]): Columns that define uniqueness (used in ON CONFLICT clause).
+            key_columns (list[str]): Columns for keys to the table
             update_columns (list[str]): Columns to update when a conflict occurs.
             *values: Actual values to insert, matching the order of (key_columns + update_columns).
         """
@@ -51,7 +51,7 @@ class DBClient(object):
         update_str = ", ".join(
             f"{col} = "
             + (
-                f"{table}.{col} + EXCLUDED.{col}"
+                f"GREATEST(LEAST({table}.{col} + EXCLUDED.{col}, 1.0), 0.0)"  # does not allow prefscore to be <0 or >1
                 if col == "preference_score"
                 else f"EXCLUDED.{col}"
             )
@@ -66,4 +66,5 @@ class DBClient(object):
             ON CONFLICT ({key_str}) DO UPDATE
             SET {update_str}
         """
+        print(query)
         await self.db.execute(query, *values)

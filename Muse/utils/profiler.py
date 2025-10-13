@@ -113,7 +113,6 @@ class Profiler(DBClient):
         base_preference_score: float = 0.5,
     ) -> None:
         """Insert or update a like record in the database."""
-        print(max(0.0, min(base_preference_score + alpha, 1.0)))
         await self.upsert_preferences(
             table_name,
             ["user_id", target_column],
@@ -121,7 +120,7 @@ class Profiler(DBClient):
             user_id,
             target_id,
             liked_at,
-            max(0.0, min(base_preference_score + alpha, 1.0)),
+            alpha,
             liked,
         )
 
@@ -155,12 +154,7 @@ if __name__ == "__main__":
         tasks = [
             profiler.log_event(call[0], call[1], **EVENTS[call[2]])
             for call in [
-                (members[0], test_songs[0], "play"),
-                (members[1], test_songs[1], "play"),
-                (members[0], test_songs[0], "like"),
-                (members[2], test_songs[0], "like"),
-                (members[0], test_songs[2], "skip"),
-                (members[2], test_songs[0], "dislike"),
+                (members[1], test_songs[0], "skip"),
             ]
         ]
 
