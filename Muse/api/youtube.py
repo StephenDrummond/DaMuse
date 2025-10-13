@@ -1,3 +1,5 @@
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
 from typing import Dict, Any
 
 import yt_dlp
@@ -20,6 +22,12 @@ ytdl_format_options: Dict[str, Any] = {
 # Initialize yt-dlp with the above options
 ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
 
+executor = ProcessPoolExecutor()
+
+
+def run_ytdl(url: str):
+    return ytdl.extract_info(url, download=False)
+
 
 class YTDLSource:
     @staticmethod
@@ -33,7 +41,8 @@ class YTDLSource:
         :param stream: Whether to stream the audio or download it.
         """
         # Extract information from the URL or search term
-        info: Dict[str, Any] = ytdl.extract_info(url, download=False)
+        loop = asyncio.get_running_loop()
+        info = await loop.run_in_executor(executor, run_ytdl, url)
 
         # If multiple entries (e.g., a search), take the first one
         if "entries" in info:

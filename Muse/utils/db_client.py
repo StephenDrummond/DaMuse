@@ -8,8 +8,11 @@ class DBClient(object):
     async def create_db(self):
         await self.db.init_pool()
 
+    async def close_db(self):
+        await self.db.pool.close()
+
     async def insert_if_not_exists(
-        self, table: str, columns: list[str], *values
+            self, table: str, columns: list[str], *values
     ) -> None:
         """
         Generic helper to insert a row into a table with ON CONFLICT DO NOTHING.
@@ -20,7 +23,7 @@ class DBClient(object):
             *values: Values to insert in order
         """
         col_str = ", ".join(columns)
-        val_str = ", ".join(f"${i+1}" for i in range(len(values)))
+        val_str = ", ".join(f"${i + 1}" for i in range(len(values)))
         query = f"""
             INSERT INTO {table} ({col_str})
             VALUES ({val_str})
@@ -29,7 +32,7 @@ class DBClient(object):
         await self.db.execute(query, *values)
 
     async def upsert_preferences(
-        self, table: str, key_columns: list[str], update_columns: list[str], *values
+            self, table: str, key_columns: list[str], update_columns: list[str], *values
     ):
         """
 
@@ -59,7 +62,7 @@ class DBClient(object):
         )
 
         # ( $1, $2, $3...) values for postgres placeholders
-        placeholders = ", ".join(f"${i+1}" for i in range(len(values)))
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(values)))
         query = f"""
             INSERT INTO {table} ({', '.join(key_columns + update_columns)})
             VALUES ({placeholders})
