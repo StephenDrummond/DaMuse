@@ -5,9 +5,9 @@ from typing import Optional, Dict, Any
 import discord
 from discord.ext import commands
 
+from api.youtube import YTDLSource
 from music_state.queues import queues
 from utils.librarian import Librarian
-from api.youtube import YTDLSource
 
 # Options for FFmpeg to handle streaming
 FFMPEG_OPTIONS: Dict[str, str] = {
@@ -52,7 +52,7 @@ class Music(commands.Cog):
             # Add song to queue
             await YTDLSource.from_url(search, ctx)
         except Exception as e:
-            await ctx.send(f"Error retrieving track: {e}")
+            print(f"Error retrieving track: {e}")
             return
 
         # Join or move to the user's voice channel
