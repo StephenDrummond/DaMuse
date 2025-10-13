@@ -28,14 +28,37 @@ class DBClient(object):
         """
         await self.db.execute(query, *values)
 
-    async def upsert(
+    async def upsert_preferences(
         self, table: str, key_columns: list[str], update_columns: list[str], *values
     ):
         """
-        Generic UPSERT (insert or update) helper.
+        
+        Behavior:
+        - If the record does NOT exist → inserts it with the given values.
+        - If the record already exists → updates it.
+        - `preference_score` is incremented by the new value (`+ EXCLUDED.preference_score`)
+        - All other columns are replaced by their new values.
+
+        Parameters:
+            table (str): Name of the target database table.
+            key_columns (list[str]): Columns that define uniqueness (used in ON CONFLICT clause).
+            update_columns (list[str]): Columns to update when a conflict occurs.
+            *values: Actual values to insert, matching the order of (key_columns + update_columns).
         """
         key_str = ", ".join(key_columns)
-        update_str = ", ".join(f"{col} = EXCLUDED.{col}" for col in update_columns)
+
+        # What the function will be upserting with respect to preference score being base + alpha or existing + alpha
+        update_str = ", ".join(
+            f"{col} = "
+            + (
+                f"{table}.{col} + EXCLUDED.{col}"
+                if col == "preference_score"
+                else f"EXCLUDED.{col}"
+            )
+            for col in update_columns
+        )
+
+        # ( $1, $2, $3...) values for postgres placeholders
         placeholders = ", ".join(f"${i+1}" for i in range(len(values)))
         query = f"""
             INSERT INTO {table} ({', '.join(key_columns + update_columns)})

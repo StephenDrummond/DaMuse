@@ -38,31 +38,36 @@ class Profiler(DBClient):
     ) -> None:
         """Generic event logger for plays, likes, skips, and dislikes."""
         member_id = member.id
-        info_dict = await get_spotify_info(song)
+        info = await get_spotify_info(song)
         song_info = SongInfo(
-            name=info_dict["name"],
-            artists=info_dict["artists"],
-            genres=info_dict.get("genres", []),
+            name=info["name"],
+            artists=info["artists"],
+            genres=info.get("genres", []),
         )
+        # after meta data is gathered and formatted log all the different preference changes
         await self._log_preference_group(member_id, song_info, alpha, liked)
 
     async def _log_preference_group(
         self, member_id: int, song_info: SongInfo, alpha: float, liked: bool
     ) -> None:
-        """Logs song, artist, and genre preferences."""
-        # Song
-        await self.log_preference(
-            "song_user_likes", song_info.name, member_id, alpha, liked
+        """Logs song, artist, and genre preferences concurrently."""
+        tasks = [
+            self.log_preference(
+                "song_user_likes", song_info.name, member_id, alpha, liked
+            ),
+            self.log_preference(
+                "artist_user_likes", song_info.artists[0], member_id, alpha, liked
+            ),
+        ]
+
+        # Add genre tasks (generator expression)
+        tasks.extend(
+            self.log_preference("genre_user_likes", genre, member_id, alpha, liked)
+            for genre in song_info.genres
         )
-        # Artist
-        await self.log_preference(
-            "artist_user_likes", song_info.artists[0], member_id, alpha, liked
-        )
-        # Genres
-        for genre in song_info.genres:
-            await self.log_preference(
-                "genre_user_likes", genre, member_id, alpha, liked
-            )
+
+        # Run all tasks concurrently
+        await asyncio.gather(*tasks)
 
     async def log_preference(
         self,
@@ -108,31 +113,32 @@ class Profiler(DBClient):
         base_preference_score: float = 0.5,
     ) -> None:
         """Insert or update a like record in the database."""
-        await self.upsert(
+        print(max(0.0, min(base_preference_score + alpha, 1.0)))
+        await self.upsert_preferences(
             table_name,
             ["user_id", target_column],
             ["liked_at", "preference_score", "liked"],
             user_id,
             target_id,
             liked_at,
-            base_preference_score + alpha,
+            max(0.0, min(base_preference_score + alpha, 1.0)),
             liked,
         )
 
-
-# Optional helper constants for common events
-EVENTS = {
-    "play": {"alpha": 0.2, "liked": True},
-    "like": {"alpha": 0.4, "liked": True},
-    "dislike": {"alpha": -0.5, "liked": False},
-    "skip": {"alpha": -0.2, "liked": False},
-}
 
 # -------------------------
 # Example usage / testing
 # -------------------------
 if __name__ == "__main__":
     import asyncio
+
+    # Optional helper constants for common events
+    EVENTS = {
+        "play": {"alpha": 0.2, "liked": True},
+        "like": {"alpha": 0.4, "liked": True},
+        "dislike": {"alpha": -0.5, "liked": False},
+        "skip": {"alpha": -0.2, "liked": False},
+    }
 
     async def main():
         profiler = Profiler()
@@ -146,16 +152,20 @@ if __name__ == "__main__":
         members = [FakeMember(62), FakeMember(64), FakeMember(56)]
         test_songs = ["Money Pink Floyd", "Rockafeller skank", "Charleston girl"]
 
-        # Log some events
-        for call in [
-            (members[0], test_songs[0], "play"),
-            (members[1], test_songs[1], "play"),
-            (members[0], test_songs[1], "like"),
-            (members[2], test_songs[1], "like"),
-            (members[0], test_songs[2], "skip"),
-        ]:
-            asyncio.create_task(profiler.log_event(call[0], call[1], **EVENTS[call[2]]))
+        tasks = [
+            profiler.log_event(call[0], call[1], **EVENTS[call[2]])
+            for call in [
+                (members[0], test_songs[0], "play"),
+                (members[1], test_songs[1], "play"),
+                (members[0], test_songs[0], "like"),
+                (members[2], test_songs[0], "like"),
+                (members[0], test_songs[2], "skip"),
+                (members[2], test_songs[0], "dislike"),
+            ]
+        ]
 
+        # Run all tasks concurrently
+        await asyncio.gather(*tasks)
         print("Events logged successfully.")
 
     asyncio.run(main())
