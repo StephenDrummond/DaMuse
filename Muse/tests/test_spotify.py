@@ -1,14 +1,14 @@
 import pytest
 from unittest.mock import patch, AsyncMock
 
-from api.spotify import search_artist, search_track, get_spotify_info  # replace 'api.spotify' with your file name
+from api.spotify import search_artist, search_track, get_spotify_info  # replace with your actual file name
 
 
 @pytest.mark.asyncio
 @patch("api.spotify.sp.search")
 @patch("api.spotify.sp.artist_top_tracks")
 async def test_search_artist(mock_top_tracks, mock_search):
-    # Mock artist search result
+    # Arrange
     mock_search.return_value = {
         "artists": {
             "items": [{
@@ -21,23 +21,25 @@ async def test_search_artist(mock_top_tracks, mock_search):
             }]
         }
     }
-
-    # Mock top tracks
     mock_top_tracks.return_value = {
         "tracks": [{"name": "Money"}, {"name": "Time"}]
     }
 
+    # Act
     result = await search_artist("Pink Floyd")
+
+    # Assert
     assert result is not None
     assert result["name"] == "Pink Floyd"
     assert "Money" in result["top_tracks"]
+    assert result["followers"] == 1000000
 
 
 @pytest.mark.asyncio
 @patch("api.spotify.sp.search")
 @patch("api.spotify.sp.artist")
 async def test_search_track(mock_artist, mock_search):
-    # Mock track search result
+    # Arrange
     mock_search.return_value = {
         "tracks": {
             "items": [{
@@ -53,50 +55,64 @@ async def test_search_track(mock_artist, mock_search):
             }]
         }
     }
-
     mock_artist.return_value = {
         "genres": ["rock", "psychedelic rock"],
         "name": "Pink Floyd"
     }
 
+    # Act
     result = await search_track("Money")
+
+    # Assert
     assert result is not None
     assert result["name"] == "Money"
     assert "Pink Floyd" in result["artists"]
     assert "rock" in result["genres"]
+    assert result["album"] == "The Dark Side of the Moon"
 
 
 @pytest.mark.asyncio
 @patch("api.spotify.search_artist", new_callable=AsyncMock)
 @patch("api.spotify.search_track", new_callable=AsyncMock)
 async def test_get_spotify_info_artist_found(mock_track, mock_artist):
-    # Only artist found
+    # Arrange
     mock_artist.return_value = {"type": "artist", "name": "Pink Floyd"}
     mock_track.return_value = None
 
+    # Act
     result = await get_spotify_info("Pink Floyd")
+
+    # Assert
     assert result["type"] == "artist"
+    assert result["name"] == "Pink Floyd"
 
 
 @pytest.mark.asyncio
 @patch("api.spotify.search_artist", new_callable=AsyncMock)
 @patch("api.spotify.search_track", new_callable=AsyncMock)
 async def test_get_spotify_info_track_found(mock_track, mock_artist):
-    # Artist not found, track found
+    # Arrange
     mock_artist.return_value = None
     mock_track.return_value = {"type": "track", "name": "Money"}
 
+    # Act
     result = await get_spotify_info("Money")
+
+    # Assert
     assert result["type"] == "track"
+    assert result["name"] == "Money"
 
 
 @pytest.mark.asyncio
 @patch("api.spotify.search_artist", new_callable=AsyncMock)
 @patch("api.spotify.search_track", new_callable=AsyncMock)
 async def test_get_spotify_info_none_found(mock_track, mock_artist):
-    # Neither artist nor track found
+    # Arrange
     mock_artist.return_value = None
     mock_track.return_value = None
 
+    # Act
     result = await get_spotify_info("Unknown")
+
+    # Assert
     assert result is None
