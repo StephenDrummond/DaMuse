@@ -3,9 +3,6 @@ from typing import Any, Optional, List
 
 import asyncpg
 from dotenv import load_dotenv
-from pymongo.mongo_client import MongoClient
-from pymongo.server_api import ServerApi
-from motor.motor_asyncio import AsyncIOMotorClient
 
 load_dotenv()
 
@@ -15,15 +12,10 @@ DB_PASSWORD = os.getenv("DB_PASS")
 DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT")
 
-MONGO_USER = os.getenv("MONGO_USER")
-MONGO_PASS = os.getenv("MONGO_PASS")
-MONGO_URI = f"mongodb+srv://{MONGO_USER}:{MONGO_PASS}@damusecluster.ucryvk4.mongodb.net/?retryWrites=true&w=majority"
-
 
 class Database:
     def __init__(self):
         self.pool: Optional[asyncpg.pool.Pool] = None
-        self.client: MongoClient = None
         self.mongodb = None
 
     async def init_pool(self):
@@ -41,17 +33,6 @@ class Database:
             print("Database pool created")
         except Exception as e:
             print("Error creating database pool:", e)
-
-    async def init_mongodb(self):
-        self.client = AsyncIOMotorClient(MONGO_URI)
-        try:
-            self.client.admin.command("ping")
-            print("Pinged your deployment. You successfully connected to MongoDB!")
-
-            self.mongodb = self.client.DaMuse
-        except Exception as e:
-            print(e)
-
 
     async def execute(self, query: str, *args: Any) -> None:
         """Run a query that doesn’t return results (INSERT, UPDATE, DELETE)."""

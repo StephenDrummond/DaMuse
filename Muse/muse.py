@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from Muse.db.db import Database
+from db.db import Database
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -28,6 +28,7 @@ async def on_ready():
 
 async def main():
     db = Database()
+    await db.init_pool()
     bot.db = db
 
     async with bot:

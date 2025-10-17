@@ -1,12 +1,12 @@
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List
 
 import discord
-import asyncio
 
-from .db_client import DBClient
 from api.spotify import get_spotify_info
+from .db_client import DBClient
 
 
 @dataclass
@@ -24,99 +24,95 @@ class PreferenceTarget:
 
 
 class Profiler(DBClient):
+    """Handles profiling logic; main entry is log_event()."""
+
     def __init__(self, db):
         super().__init__(db)
 
-    # Map preference tables to the target table and column for fetching the id
+    # Map preference tables to target table/column for fetching IDs
     TABLE_KEY_MAPPING = {
-        "song_user_likes": ("songs", "title", "song_id"),
+        "song_user_likes": ("songs", "name", "song_id"),
         "artist_user_likes": ("artists", "name", "artist_id"),
         "genre_user_likes": ("genres", "name", "genre_id"),
     }
 
     async def log_event(
-        self, member: discord.Member, song: str, alpha: float, liked: bool
+            self, member: discord.Member, song: str, alpha: float, liked: bool
     ) -> None:
-        """Generic event logger for plays, likes, skips, and dislikes."""
+        """Log a user interaction (play, like, skip, etc) for a song."""
         member_id = member.id
+        
         info = await get_spotify_info(song)
+        if info is None:
+            return
+
         song_info = SongInfo(
             name=info["name"],
             artists=info["artists"],
             genres=info.get("genres", []),
         )
-        # after meta data is gathered and formatted log all the different preference changes
+        # Log preferences for song, artist, and genres
         await self._log_preference_group(member_id, song_info, alpha, liked)
 
     async def _log_preference_group(
-        self, member_id: int, song_info: SongInfo, alpha: float, liked: bool
+            self, member_id: int, song_info: SongInfo, alpha: float, liked: bool
     ) -> None:
-        """Logs song, artist, and genre preferences concurrently."""
+        """Log song, artist, and genre preferences concurrently."""
         tasks = [
-            self.log_preference(
-                "song_user_likes", song_info.name, member_id, alpha, liked
-            ),
-            self.log_preference(
-                "artist_user_likes", song_info.artists[0], member_id, alpha, liked
-            ),
+            self.log_preference("song_user_likes", song_info.name, member_id, alpha, liked),
+            self.log_preference("artist_user_likes", song_info.artists[0], member_id, alpha, liked),
         ]
-
-        # Add genre tasks (generator expression)
+        # Add genre tasks
         tasks.extend(
             self.log_preference("genre_user_likes", genre, member_id, alpha, liked)
             for genre in song_info.genres
         )
-
-        # Run all tasks concurrently
+        # Run all database operations concurrently
         await asyncio.gather(*tasks)
 
     async def log_preference(
-        self,
-        table_name: str,
-        target_name: str,
-        member_id: int,
-        alpha: float,
-        liked: bool,
+            self,
+            table_name: str,
+            target_name: str,
+            member_id: int,
+            alpha: float,
+            liked: bool,
     ) -> None:
-        """
-        Helper to insert or update a preference record.
-        """
-        target_table, lookup_column, pref_table_column = self.TABLE_KEY_MAPPING[
-            table_name
-        ]
+        """Fetch target ID and upsert preference in the DB."""
+        target_table, lookup_column, table_id = self.TABLE_KEY_MAPPING[table_name]
 
-        # Fetch the target id from the correct table
+        # Get the ID of the song/artist/genre
         target_id: int = await self.db.fetch_val(
             f"SELECT id FROM {target_table} WHERE {lookup_column} = $1",
             target_name,
         )
 
-        # Use the correct column in the preference table
+        # Upsert the like/preference record
         await self.upsert_preference_in_db(
             table_name=table_name,
             user_id=member_id,
             target_id=target_id,
             liked_at=datetime.today(),
-            target_column=pref_table_column,
+            foreign_table_id=table_id,
             alpha=alpha,
             liked=liked,
         )
 
     async def upsert_preference_in_db(
-        self,
-        table_name: str,
-        user_id: int,
-        target_id: int,
-        liked_at: datetime,
-        target_column: str,
-        alpha: float,
-        liked: bool,
-        base_preference_score: float = 0.5,
+            self,
+            table_name: str,
+            user_id: int,
+            target_id: int,
+            liked_at: datetime,
+            foreign_table_id: str,
+            alpha: float,
+            liked: bool,
+            base_preference_score: float = 0.5,
     ) -> None:
         """Insert or update a like record in the database."""
-        await self.upsert_preferences(
+        await self.upsert_preference(
             table_name,
-            ["user_id", target_column],
+            ["user_id", foreign_table_id],
             ["liked_at", "preference_score", "liked"],
             user_id,
             target_id,
@@ -124,43 +120,3 @@ class Profiler(DBClient):
             alpha,
             liked,
         )
-
-
-# -------------------------
-# Example usage / testing
-# -------------------------
-if __name__ == "__main__":
-    import asyncio
-
-    # Optional helper constants for common events
-    EVENTS = {
-        "play": {"alpha": 0.2, "liked": True},
-        "like": {"alpha": 0.4, "liked": True},
-        "dislike": {"alpha": -0.5, "liked": False},
-        "skip": {"alpha": -0.2, "liked": False},
-    }
-
-    async def main():
-        profiler = Profiler()
-        await profiler.create_db()
-
-        # Fake Discord members for testing
-        class FakeMember:
-            def __init__(self, id: int):
-                self.id = id
-
-        members = [FakeMember(62), FakeMember(64), FakeMember(56)]
-        test_songs = ["Money Pink Floyd", "Rockafeller skank", "Charleston girl"]
-
-        tasks = [
-            profiler.log_event(call[0], call[1], **EVENTS[call[2]])
-            for call in [
-                (members[1], test_songs[0], "skip"),
-            ]
-        ]
-
-        # Run all tasks concurrently
-        await asyncio.gather(*tasks)
-        print("Events logged successfully.")
-
-    asyncio.run(main())
