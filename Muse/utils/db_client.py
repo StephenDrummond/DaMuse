@@ -24,7 +24,7 @@ class DBClient(object):
         """
         await self.db.execute(query, *values)
 
-    async def upsert_preferences(
+    async def upsert_preference(
             self, table: str, key_columns: list[str], update_columns: list[str], *values
     ):
         """Insert or update a record. Increments preference_score within [0,1]."""
