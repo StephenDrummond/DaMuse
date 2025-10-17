@@ -6,7 +6,7 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from Muse.db.db import Database
+from db.db import Database
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
