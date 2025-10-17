@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import List, Dict, Any
 
 import discord
+import asyncio
 
 from .db_client import DBClient
 from api.spotify import get_spotify_info
@@ -23,8 +24,8 @@ class PreferenceTarget:
 
 
 class Profiler(DBClient):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, db):
+        super().__init__(db)
 
     # Map preference tables to the target table and column for fetching the id
     TABLE_KEY_MAPPING = {

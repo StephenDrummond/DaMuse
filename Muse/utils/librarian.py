@@ -2,8 +2,8 @@ from .db_client import DBClient
 
 
 class Librarian(DBClient):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, db):
+        super().__init__(db)
 
     async def add_member_to_db(self, member_id: int):
         await self.insert_if_not_exists("users", ["discord_id"], member_id)
