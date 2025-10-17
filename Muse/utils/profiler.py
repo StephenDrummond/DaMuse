@@ -41,7 +41,11 @@ class Profiler(DBClient):
     ) -> None:
         """Log a user interaction (play, like, skip, etc) for a song."""
         member_id = member.id
+        
         info = await get_spotify_info(song)
+        if info is None:
+            return
+
         song_info = SongInfo(
             name=info["name"],
             artists=info["artists"],
@@ -106,7 +110,7 @@ class Profiler(DBClient):
             base_preference_score: float = 0.5,
     ) -> None:
         """Insert or update a like record in the database."""
-        await self.upsert_preferences(
+        await self.upsert_preference(
             table_name,
             ["user_id", foreign_table_id],
             ["liked_at", "preference_score", "liked"],
