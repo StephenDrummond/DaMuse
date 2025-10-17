@@ -34,16 +34,6 @@ class Database:
         except Exception as e:
             print("Error creating database pool:", e)
 
-    async def init_mongodb(self):
-        self.client = AsyncIOMotorClient(MONGO_URI)
-        try:
-            self.client.admin.command("ping")
-            print("Pinged your deployment. You successfully connected to MongoDB!")
-
-            self.mongodb = self.client.DaMuse
-        except Exception as e:
-            print(e)
-
     async def execute(self, query: str, *args: Any) -> None:
         """Run a query that doesn’t return results (INSERT, UPDATE, DELETE)."""
         async with self.pool.acquire() as connection:
