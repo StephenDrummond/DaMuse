@@ -28,6 +28,7 @@ async def on_ready():
 
 async def main():
     db = Database()
+    await db.init_pool()
     bot.db = db
 
     async with bot:
