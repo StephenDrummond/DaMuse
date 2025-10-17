@@ -28,7 +28,8 @@ class Music(commands.Cog):
         """
         self.stop_music: bool = False  # Flag to stop playback
         self.bot: commands.Bot = bot
-        profiler: Librarian = Librarian()  # Profiler instance (unused here)
+        self.db = bot.db
+        profiler: Librarian = Librarian(self.db)  # Librarian instance (unused here)
 
     @commands.command()
     async def play(self, ctx: commands.Context, *, search: Optional[str] = None) -> None:
