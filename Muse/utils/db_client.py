@@ -2,17 +2,19 @@ from db.db import Database
 
 
 class DBClient(object):
-    def __init__(self):
-        self.db = Database()
+    def __init__(self, db):
+        self.db : Database = db
 
-    async def create_db(self):
-        await self.db.init_pool()
-
-    async def close_db(self):
-        await self.db.pool.close()
+    async def get_user_id(self, discord_id: int) -> int:
+        query = f"""
+                SELECT user_id
+                FROM users
+                WHERE discord_id = ($1)
+                """
+        return await self.db.fetch_val(query, discord_id)
 
     async def insert_if_not_exists(
-            self, table: str, columns: list[str], *values
+        self, table: str, columns: list[str], *values
     ) -> None:
         """
         Generic helper to insert a row into a table with ON CONFLICT DO NOTHING.
@@ -32,7 +34,7 @@ class DBClient(object):
         await self.db.execute(query, *values)
 
     async def upsert_preferences(
-            self, table: str, key_columns: list[str], update_columns: list[str], *values
+        self, table: str, key_columns: list[str], update_columns: list[str], *values
     ):
         """
 
