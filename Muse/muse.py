@@ -6,6 +6,8 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from Muse.db.db import Database
+
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
@@ -25,6 +27,9 @@ async def on_ready():
 
 
 async def main():
+    db = Database()
+    bot.db = db
+
     async with bot:
         await bot.load_extension("cogs.general")
         await bot.load_extension("cogs.music")
