@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List
@@ -7,6 +8,9 @@ import discord
 
 from api.spotify import get_spotify_info
 from .db_client import DBClient
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 @dataclass
@@ -41,7 +45,7 @@ class Profiler(DBClient):
     ) -> None:
         """Log a user interaction (play, like, skip, etc) for a song."""
         member_id = member.id
-        
+
         info = await get_spotify_info(song)
         if info is None:
             return
@@ -81,22 +85,33 @@ class Profiler(DBClient):
         """Fetch target ID and upsert preference in the DB."""
         target_table, lookup_column, table_id = self.TABLE_KEY_MAPPING[table_name]
 
-        # Get the ID of the song/artist/genre
-        target_id: int = await self.db.fetch_val(
-            f"SELECT id FROM {target_table} WHERE {lookup_column} = $1",
-            target_name,
-        )
+        try:
+            # Get the ID of the song/artist/genre
+            target_id: int = await self.db.fetch_val(
+                f"SELECT id FROM {target_table} WHERE {lookup_column} = $1",
+                target_name,
+            )
 
-        # Upsert the like/preference record
-        await self.upsert_preference_in_db(
-            table_name=table_name,
-            user_id=member_id,
-            target_id=target_id,
-            liked_at=datetime.today(),
-            foreign_table_id=table_id,
-            alpha=alpha,
-            liked=liked,
-        )
+            if target_id is None:
+                raise ValueError(f"\nNo target_id found for {target_name} in {target_table}")
+
+            # Upsert the like/preference record
+            await self.upsert_preference_in_db(
+                table_name=table_name,
+                user_id=member_id,
+                target_id=target_id,
+                liked_at=datetime.today(),
+                foreign_table_id=table_id,
+                alpha=alpha,
+                liked=liked,
+            )
+        except ValueError as e:
+            logger.exception(e)
+            # Should maybe find a way to check if the song exists and insert it if it does?? could be redundant.
+        except Exception as e:
+            # Log or handle the error however you want
+            logger.exception(
+                f"\nError logging preference: {e} \nCould not log {table_name} {target_name} for user: {member_id}")
 
     async def upsert_preference_in_db(
             self,

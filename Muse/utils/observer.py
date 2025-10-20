@@ -42,4 +42,4 @@ def check_connection():
 
 
 if __name__ == "__main__":
-    test_redis()
+    check_connection()

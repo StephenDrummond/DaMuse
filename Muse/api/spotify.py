@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import Any, Dict, Optional, List
 
@@ -18,6 +19,9 @@ client_credentials_manager = SpotifyClientCredentials(
     client_secret=SPOTIFY_CLIENT_SECRET
 )
 sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 async def search_artist(search_query: str) -> Optional[Dict[str, Any]]:
@@ -80,11 +84,11 @@ async def get_spotify_info(search_query: str) -> Optional[Dict[str, Any]]:
         track_info = await search_track(search_query)
         if track_info:
             return track_info
-        
-        print("No results found.")
+
+        logger.exception("No results found.")
         return None
     except Exception as e:
-        print(f"Error fetching Spotify data: {e}")
+        logger.exception(f"Error fetching Spotify data: {e}")
         return None
 
 
