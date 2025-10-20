@@ -1,5 +1,6 @@
 import logging
 import os
+import pprint
 from typing import Any, Dict, Optional, List
 
 import spotipy
@@ -92,6 +93,15 @@ async def get_spotify_info(search_query: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+import asyncio
+
 if __name__ == "__main__":
-    info = get_spotify_info("Money Pink Floyd")
-    print(info)
+    async def main():
+        info = await get_spotify_info("Money Pink Floyd")
+        pprint.pprint(info)
+
+        info = await get_spotify_info("Pink Floyd")
+        pprint.pprint(info)
+
+
+    asyncio.run(main())
