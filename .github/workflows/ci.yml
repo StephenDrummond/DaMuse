@@ -27,6 +27,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r Muse/requirements.txt
 
+    - name: Set environment variables
+      run: |
+        echo "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}" >> $GITHUB_ENV
+        echo "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" >> $GITHUB_ENV
+        
     - name: Run tests
       run: |
         cd Muse
