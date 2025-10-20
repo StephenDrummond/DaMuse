@@ -1,0 +1,35 @@
+name: Python CI on Fedora
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: fedora-latest   # Fedora OS
+    strategy:
+      matrix:
+        python-version: [3.13.0]
+
+    steps:
+    # Step 1: Checkout repository
+    - uses: actions/checkout@v3
+
+    # Step 2: Setup Python
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    # Step 3: Install dependencies
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    # Step 4: Run tests
+    - name: Run pytest
+      run: |
+        pytest -v
