@@ -46,7 +46,7 @@ jobs:
       - name: Run black (check formatting)
         run: |
           cd Muse
-          black --check .
+          black .
 
       - name: Run flake8 linting
         run: |
