@@ -32,4 +32,5 @@ jobs:
     # Step 4: Run tests
     - name: Run pytest
       run: |
-        pytest -v
+        cd Muse
+        python -m pytest tests/ -v
