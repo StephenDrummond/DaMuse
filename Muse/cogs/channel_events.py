@@ -16,7 +16,7 @@ class ChannelEvents(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot: commands.Bot = bot
-        self.db = bot.db
+        self.db = bot.db  # type: ignore
         self.librarian: Librarian = Librarian(self.db)
 
     @commands.Cog.listener()

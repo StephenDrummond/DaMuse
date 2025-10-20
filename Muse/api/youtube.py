@@ -63,8 +63,11 @@ class YTDLSource:
             return
 
         # Add the track info to the guild's queue
+        if ctx.guild is None:
+            await ctx.send("Something went wrong. Try again later.")
+            return
         queues[ctx.guild.id].append(info)
 
         # If something is already playing, notify the user it's queued
-        if ctx.voice_client and ctx.voice_client.is_playing():
+        if ctx.voice_client and ctx.voice_client.is_playing():  # type: ignore
             await ctx.send(f"Queued **{info['title']}**")

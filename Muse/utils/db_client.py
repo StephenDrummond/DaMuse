@@ -5,7 +5,7 @@ class DBClient(object):
     def __init__(self, db):
         self.db: Database = db
 
-    async def get_user_id(self, discord_id: int) -> int:
+    async def get_user_id(self, discord_id: int) -> int | None:
         query = """
             SELECT user_id
             FROM users

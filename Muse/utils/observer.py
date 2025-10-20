@@ -28,7 +28,7 @@ def check_connection():
         value = r.get("test:key")
 
         # Decode and print
-        print("Stored value:", value.decode())
+        # print("Stored value:", value.decode())
 
         # Clean up
         r.delete("test:key")

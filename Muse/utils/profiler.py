@@ -91,7 +91,7 @@ class Profiler(DBClient):
 
         try:
             # Get the ID of the song/artist/genre
-            target_id: int = await self.db.fetch_val(
+            target_id: int | None = await self.db.fetch_val(
                 f"SELECT id FROM {target_table} WHERE {lookup_column} = $1",
                 target_name,
             )

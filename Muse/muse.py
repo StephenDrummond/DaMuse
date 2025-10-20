@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 
 import discord
 from discord.ext import commands
@@ -9,7 +10,8 @@ from dotenv import load_dotenv
 from db.db import Database
 
 load_dotenv()
-TOKEN = os.getenv("DISCORD_TOKEN")
+
+TOKEN: str | None = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -29,9 +31,12 @@ async def on_ready():
 async def main():
     db = Database()
     await db.init_pool()
-    bot.db = db
+    bot.db = db  # type: ignore
 
     async with bot:
+        if TOKEN is None:
+            print("DISCORD_TOKEN environment variable not set")
+            sys.exit(1)
         await bot.load_extension("cogs.general")
         await bot.load_extension("cogs.music")
         await bot.load_extension("cogs.channel_events")

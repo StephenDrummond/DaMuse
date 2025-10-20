@@ -23,7 +23,7 @@ async def leave_after_delay(
         await channel.send(
             "No activity detected. Leaving the voice channel due to inactivity."
         )
-        await guild.voice_client.disconnect()
+        await guild.voice_client.disconnect(force=True)
 
 
 def start_timer(guild: Guild, channel: TextChannel, delay: int = 180) -> None:
