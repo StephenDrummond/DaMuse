@@ -2,6 +2,8 @@ import os
 from typing import Any, Optional, List
 
 import asyncpg
+from asyncpg import Record
+from asyncpg.pool import Pool
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,11 +16,13 @@ DB_PORT = os.getenv("DB_PORT")
 
 
 class Database:
-    def __init__(self):
-        self.pool: Optional[asyncpg.pool.Pool] = None
+    pool: Optional[Pool]
+
+    def __init__(self) -> None:
+        self.pool = None
         self.mongodb = None
 
-    async def init_pool(self):
+    async def init_pool(self) -> None:
         """Create and store the database connection pool."""
         try:
             self.pool = await asyncpg.create_pool(
@@ -36,20 +40,28 @@ class Database:
 
     async def execute(self, query: str, *args: Any) -> None:
         """Run a query that doesn’t return results (INSERT, UPDATE, DELETE)."""
+        if self.pool is None:
+            raise RuntimeError("Database pool not initialized")
         async with self.pool.acquire() as connection:
             await connection.execute(query, *args)
 
-    async def fetch(self, query: str, *args: Any) -> List[dict]:
+    async def fetch(self, query: str, *args: Any) -> List[Record]:
         """Run a query that returns multiple rows."""
+        if self.pool is None:
+            raise RuntimeError("Database pool not initialized")
         async with self.pool.acquire() as connection:
             return await connection.fetch(query, *args)
 
     async def fetch_val(self, query: str, *args: Any) -> Optional[Any]:
         """Run a query that returns a single value."""
+        if self.pool is None:
+            raise RuntimeError("Database pool not initialized")
         async with self.pool.acquire() as connection:
             return await connection.fetchval(query, *args)
 
-    async def fetch_row(self, query: str, *args: Any) -> Optional[dict]:
+    async def fetch_row(self, query: str, *args: Any) -> Optional[Record]:
         """Run a query that returns a single row."""
+        if self.pool is None:
+            raise RuntimeError("Database pool not initialized")
         async with self.pool.acquire() as connection:
             return await connection.fetchrow(query, *args)

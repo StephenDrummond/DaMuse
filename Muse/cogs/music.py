@@ -7,7 +7,6 @@ from discord.ext import commands
 
 from api.youtube import YTDLSource
 from music_state.queues import queues
-from utils.librarian import Librarian
 
 # Options for FFmpeg to handle streaming
 FFMPEG_OPTIONS: Dict[str, str] = {
@@ -29,7 +28,7 @@ class Music(commands.Cog):
         self.stop_music: bool = False  # Flag to stop playback
         self.bot: commands.Bot = bot
         self.db = bot.db
-        librarian: Librarian = Librarian(self.db)  # Librarian instance (unused here)
+        # librarian: Librarian = Librarian(self.db)  # Librarian instance (unused here)
 
     @commands.command()
     async def play(

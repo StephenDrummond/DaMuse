@@ -113,11 +113,13 @@ class Profiler(DBClient):
             )
         except ValueError as e:
             logger.exception(e)
-            # Should maybe find a way to check if the song exists and insert it if it does?? could be redundant.
+            # Should maybe find a way to check if the song exists and
+            # insert it if it does?? could be redundant.
         except Exception as e:
             # Log or handle the error however you want
             logger.exception(
-                f"\nError logging preference: {e} \nCould not log {table_name} {target_name} for user: {member_id}"
+                f"\nError logging preference: {e} \n"
+                f"Could not log {table_name} {target_name} for user: {member_id}"
             )
 
     async def upsert_preference_in_db(

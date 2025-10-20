@@ -5,28 +5,20 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="30272b0a-b9ba-421a-94b9-d0e2bc110e80" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.github/workflows/ci.yml" beforeDir="false" afterPath="$PROJECT_DIR$/.github/workflows/ci.yml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/Muse/api/__init__.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/api/spotify.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/api/spotify.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/api/youtube.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/api/youtube.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/cogs/channel_events.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/cogs/channel_events.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/cogs/general.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/cogs/general.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/cogs/music.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/cogs/music.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/db/cache.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/db/cache.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/db/schedule_decay_preferences.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/db/schedule_decay_preferences.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/music_state/channel_members.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/music_state/channel_members.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/music_state/inactivity.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/music_state/inactivity.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/tests/api/test_spotify.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/tests/api/test_spotify.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/tests/utils/test_profiler.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/tests/utils/test_profiler.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/utils/curator.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/utils/curator.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/utils/db_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/utils/db_client.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/utils/observer.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/utils/observer.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Muse/utils/profiler.py" beforeDir="false" afterPath="$PROJECT_DIR$/Muse/utils/profiler.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -43,6 +35,9 @@
     &quot;accountId&quot;: &quot;ff4b46b2-0566-4eaf-a938-ec18ebf8a6f4&quot;
   }
 }</component>
+  <component name="ProblemsViewState">
+    <option name="selectedTabId" value="CurrentFile" />
+  </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 5
 }</component>
@@ -51,16 +46,17 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Python.muse.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/n01474869/PycharmProjects/DaMuse&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.muse.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "C:/Users/n01474869/PycharmProjects/DaMuse"
   }
-}</component>
+}]]></component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>

@@ -1,4 +1,4 @@
-from db.db import Database
+from db.db import Database  # type: ignore
 
 
 class DBClient(object):

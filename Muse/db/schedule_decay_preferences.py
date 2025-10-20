@@ -57,7 +57,7 @@ BEGIN
     WHERE liked_at < CURRENT_DATE;
 END;
 $$ LANGUAGE plpgsql;
-    """,
+    """,  # noqa: E501
         fetch=False,
     )
 

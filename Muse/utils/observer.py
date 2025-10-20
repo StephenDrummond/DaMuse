@@ -1,3 +1,5 @@
+import redis
+
 from .db_client import DBClient
 
 
@@ -10,9 +12,6 @@ async def load_user_prefs_into_memory(self, user_id): ...
 
 
 async def remove_user_prefs_from_memory(self, user_id): ...
-
-
-import redis
 
 
 def check_connection():

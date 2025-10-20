@@ -2,7 +2,8 @@ import asyncio
 from concurrent.futures import ProcessPoolExecutor
 from typing import Dict, Any
 
-import yt_dlp
+import yt_dlp  # type: ignore
+from discord.ext import commands
 
 from music_state.queues import queues
 

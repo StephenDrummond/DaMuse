@@ -1,11 +1,10 @@
 import logging
 import os
-import pprint
 from typing import Any, Dict, Optional, List
 
-import spotipy
+import spotipy  # type: ignore
 from dotenv import load_dotenv
-from spotipy.oauth2 import SpotifyClientCredentials
+from spotipy.oauth2 import SpotifyClientCredentials  # type: ignore
 
 # Load environment variables from .env file
 load_dotenv()
@@ -96,17 +95,3 @@ async def get_spotify_info(search_query: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.exception(f"Error fetching Spotify data: {e}")
         return None
-
-
-import asyncio
-
-if __name__ == "__main__":
-
-    async def main():
-        info = await get_spotify_info("Money Pink Floyd")
-        pprint.pprint(info)
-
-        info = await get_spotify_info("Pink Floyd")
-        pprint.pprint(info)
-
-    asyncio.run(main())

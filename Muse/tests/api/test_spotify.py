@@ -47,9 +47,7 @@ mock_track_artist_info = {
 
 @pytest.mark.asyncio
 async def test_artist_query_returns_artist():
-    with patch(
-        "api.spotify.sp.search", return_value=mock_artist_result
-    ) as mock_search, patch(
+    with patch("api.spotify.sp.search", return_value=mock_artist_result), patch(
         "api.spotify.sp.artist_top_tracks", return_value=mock_artist_top_tracks
     ):
         info = await get_spotify_info("Pink Floyd")
@@ -63,7 +61,7 @@ async def test_artist_query_returns_artist():
 async def test_track_query_returns_track():
     with patch("api.spotify.sp.search") as mock_search, patch(
         "api.spotify.sp.artist", return_value=mock_track_artist_info
-    ) as mock_artist_func:
+    ):
         # Return track result only if query matches
         mock_search.return_value = mock_track_result
 
