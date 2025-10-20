@@ -6,12 +6,10 @@ class Observer(DBClient):
         super().__init__(db)
 
 
-async def load_user_prefs_into_memory(self, user_id):
-    ...
+async def load_user_prefs_into_memory(self, user_id): ...
 
 
-async def remove_user_prefs_from_memory(self, user_id):
-    ...
+async def remove_user_prefs_from_memory(self, user_id): ...
 
 
 import redis
@@ -20,7 +18,7 @@ import redis
 def check_connection():
     try:
         # Connect to Redis (default port 6379)
-        r = redis.Redis(host='localhost', port=6379, db=0)
+        r = redis.Redis(host="localhost", port=6379, db=0)
 
         # Test connection
         r.ping()

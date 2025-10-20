@@ -46,7 +46,9 @@ class ChannelEvents(commands.Cog):
         for channel in guild.voice_channels:
             if channel.members:  # If the channel has members connected
                 for member in channel.members:
-                    add_member(guild.id, channel.id, member.id)  # Track member in memory
+                    add_member(
+                        guild.id, channel.id, member.id
+                    )  # Track member in memory
                 # Debug print to show current state of tracked members
                 print(channels_and_members)
 
@@ -62,10 +64,10 @@ class ChannelEvents(commands.Cog):
 
     @commands.Cog.listener()
     async def on_voice_state_update(
-            self,
-            member: discord.Member,
-            before: discord.VoiceState,
-            after: discord.VoiceState
+        self,
+        member: discord.Member,
+        before: discord.VoiceState,
+        after: discord.VoiceState,
     ) -> None:
         """
         Called whenever a user's voice state changes (joins/leaves/moves channels).

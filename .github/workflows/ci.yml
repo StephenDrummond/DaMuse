@@ -31,7 +31,7 @@ jobs:
       run: |
         echo "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}" >> $GITHUB_ENV
         echo "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" >> $GITHUB_ENV
-        
+
     - name: Run tests
       run: |
         cd Muse

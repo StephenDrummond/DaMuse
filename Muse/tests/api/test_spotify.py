@@ -14,15 +14,13 @@ mock_artist_result = {
                 "genres": ["progressive rock", "classic rock"],
                 "followers": {"total": 1000000},
                 "external_urls": {"spotify": "https://spotify.com/artist"},
-                "uri": "spotify:artist:artist_id_1"
+                "uri": "spotify:artist:artist_id_1",
             }
         ]
     }
 }
 
-mock_artist_top_tracks = {
-    "tracks": [{"name": f"Track {i}"} for i in range(5)]
-}
+mock_artist_top_tracks = {"tracks": [{"name": f"Track {i}"} for i in range(5)]}
 
 mock_track_result = {
     "tracks": {
@@ -35,7 +33,7 @@ mock_track_result = {
                 "popularity": 85,
                 "external_urls": {"spotify": "https://spotify.com/track"},
                 "uri": "spotify:track:track_id_1",
-                "preview_url": "https://preview.url"
+                "preview_url": "https://preview.url",
             }
         ]
     }
@@ -43,14 +41,17 @@ mock_track_result = {
 
 mock_track_artist_info = {
     "name": "Pink Floyd",
-    "genres": ["progressive rock", "classic rock"]
+    "genres": ["progressive rock", "classic rock"],
 }
 
 
 @pytest.mark.asyncio
 async def test_artist_query_returns_artist():
-    with patch("api.spotify.sp.search", return_value=mock_artist_result) as mock_search, \
-            patch("api.spotify.sp.artist_top_tracks", return_value=mock_artist_top_tracks):
+    with patch(
+        "api.spotify.sp.search", return_value=mock_artist_result
+    ) as mock_search, patch(
+        "api.spotify.sp.artist_top_tracks", return_value=mock_artist_top_tracks
+    ):
         info = await get_spotify_info("Pink Floyd")
         assert info is not None
         assert info["type"] == "artist"
@@ -60,8 +61,9 @@ async def test_artist_query_returns_artist():
 
 @pytest.mark.asyncio
 async def test_track_query_returns_track():
-    with patch("api.spotify.sp.search") as mock_search, \
-            patch("api.spotify.sp.artist", return_value=mock_track_artist_info) as mock_artist_func:
+    with patch("api.spotify.sp.search") as mock_search, patch(
+        "api.spotify.sp.artist", return_value=mock_track_artist_info
+    ) as mock_artist_func:
         # Return track result only if query matches
         mock_search.return_value = mock_track_result
 
@@ -75,6 +77,9 @@ async def test_track_query_returns_track():
 
 @pytest.mark.asyncio
 async def test_nonexistent_query_returns_none():
-    with patch("api.spotify.sp.search", return_value={"artists": {"items": []}, "tracks": {"items": []}}):
+    with patch(
+        "api.spotify.sp.search",
+        return_value={"artists": {"items": []}, "tracks": {"items": []}},
+    ):
         info = await get_spotify_info("Nonexistent Song 12345")
         assert info is None

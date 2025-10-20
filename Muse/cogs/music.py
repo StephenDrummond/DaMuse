@@ -11,8 +11,8 @@ from utils.librarian import Librarian
 
 # Options for FFmpeg to handle streaming
 FFMPEG_OPTIONS: Dict[str, str] = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -f opus -ac 2 -ar 48000'  # No video
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "options": "-vn -f opus -ac 2 -ar 48000",  # No video
 }
 
 # Path to ffmpeg executable
@@ -32,7 +32,9 @@ class Music(commands.Cog):
         librarian: Librarian = Librarian(self.db)  # Librarian instance (unused here)
 
     @commands.command()
-    async def play(self, ctx: commands.Context, *, search: Optional[str] = None) -> None:
+    async def play(
+        self, ctx: commands.Context, *, search: Optional[str] = None
+    ) -> None:
         """
         Play a song by URL or search term.
 
@@ -107,8 +109,7 @@ class Music(commands.Cog):
 
         # Create audio source for FFmpeg
         source: discord.FFmpegOpusAudio = await discord.FFmpegOpusAudio.from_probe(
-            info["url"],
-            **FFMPEG_OPTIONS
+            info["url"], **FFMPEG_OPTIONS
         )
 
         def after_playing(error: Optional[Exception]) -> None:

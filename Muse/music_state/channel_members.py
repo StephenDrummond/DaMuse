@@ -2,7 +2,9 @@ from collections import defaultdict
 from typing import Dict, List
 
 # Structure: {guild_id: {channel_id: [member_id_list]}}
-channels_and_members: Dict[int, Dict[int, List[int]]] = defaultdict(lambda: defaultdict(list))
+channels_and_members: Dict[int, Dict[int, List[int]]] = defaultdict(
+    lambda: defaultdict(list)
+)
 
 
 def add_member(guild_id: int, channel_id: int, member_id: int) -> None:
@@ -14,7 +16,7 @@ def add_member(guild_id: int, channel_id: int, member_id: int) -> None:
 def remove_member(guild_id: int, channel_id: int, member_id: int) -> None:
     """Remove a member from a channel's member list in a guild."""
     channel_members = channels_and_members[guild_id][channel_id]
-    
+
     if member_id in channel_members:
         channel_members.remove(member_id)
 

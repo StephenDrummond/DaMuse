@@ -41,7 +41,7 @@ class Profiler(DBClient):
     }
 
     async def log_event(
-            self, member: discord.Member, song: str, alpha: float, liked: bool
+        self, member: discord.Member, song: str, alpha: float, liked: bool
     ) -> None:
         """Log a user interaction (play, like, skip, etc) for a song."""
         member_id = member.id
@@ -59,12 +59,16 @@ class Profiler(DBClient):
         await self._log_preference_group(member_id, song_info, alpha, liked)
 
     async def _log_preference_group(
-            self, member_id: int, song_info: SongInfo, alpha: float, liked: bool
+        self, member_id: int, song_info: SongInfo, alpha: float, liked: bool
     ) -> None:
         """Log song, artist, and genre preferences concurrently."""
         tasks = [
-            self.log_preference("song_user_likes", song_info.name, member_id, alpha, liked),
-            self.log_preference("artist_user_likes", song_info.artists[0], member_id, alpha, liked),
+            self.log_preference(
+                "song_user_likes", song_info.name, member_id, alpha, liked
+            ),
+            self.log_preference(
+                "artist_user_likes", song_info.artists[0], member_id, alpha, liked
+            ),
         ]
         # Add genre tasks
         tasks.extend(
@@ -75,12 +79,12 @@ class Profiler(DBClient):
         await asyncio.gather(*tasks)
 
     async def log_preference(
-            self,
-            table_name: str,
-            target_name: str,
-            member_id: int,
-            alpha: float,
-            liked: bool,
+        self,
+        table_name: str,
+        target_name: str,
+        member_id: int,
+        alpha: float,
+        liked: bool,
     ) -> None:
         """Fetch target ID and upsert preference in the DB."""
         target_table, lookup_column, table_id = self.TABLE_KEY_MAPPING[table_name]
@@ -93,7 +97,9 @@ class Profiler(DBClient):
             )
 
             if target_id is None:
-                raise ValueError(f"\nNo target_id found for {target_name} in {target_table}")
+                raise ValueError(
+                    f"\nNo target_id found for {target_name} in {target_table}"
+                )
 
             # Upsert the like/preference record
             await self.upsert_preference_in_db(
@@ -111,18 +117,19 @@ class Profiler(DBClient):
         except Exception as e:
             # Log or handle the error however you want
             logger.exception(
-                f"\nError logging preference: {e} \nCould not log {table_name} {target_name} for user: {member_id}")
+                f"\nError logging preference: {e} \nCould not log {table_name} {target_name} for user: {member_id}"
+            )
 
     async def upsert_preference_in_db(
-            self,
-            table_name: str,
-            user_id: int,
-            target_id: int,
-            liked_at: datetime,
-            foreign_table_id: str,
-            alpha: float,
-            liked: bool,
-            base_preference_score: float = 0.5,
+        self,
+        table_name: str,
+        user_id: int,
+        target_id: int,
+        liked_at: datetime,
+        foreign_table_id: str,
+        alpha: float,
+        liked: bool,
+        base_preference_score: float = 0.5,
     ) -> None:
         """Insert or update a like record in the database."""
         await self.upsert_preference(

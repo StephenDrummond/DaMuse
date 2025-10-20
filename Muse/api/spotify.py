@@ -16,8 +16,7 @@ SPOTIFY_CLIENT_SECRET: Optional[str] = os.getenv("SPOTIFY_CLIENT_SECRET")
 
 # Authenticate with Spotify using client credentials flow
 client_credentials_manager = SpotifyClientCredentials(
-    client_id=SPOTIFY_CLIENT_ID,
-    client_secret=SPOTIFY_CLIENT_SECRET
+    client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET
 )
 sp = spotipy.Spotify(client_credentials_manager=client_credentials_manager)
 
@@ -27,7 +26,9 @@ logging.basicConfig(level=logging.INFO)
 
 async def search_artist(search_query: str) -> Optional[Dict[str, Any]]:
     """Search for an artist and return relevant data."""
-    artist_results: Dict[str, Any] = sp.search(q=f"artist:{search_query}", type="artist", limit=1)
+    artist_results: Dict[str, Any] = sp.search(
+        q=f"artist:{search_query}", type="artist", limit=1
+    )
     artists: List[Dict[str, Any]] = artist_results.get("artists", {}).get("items", [])
 
     if not artists:
@@ -35,7 +36,9 @@ async def search_artist(search_query: str) -> Optional[Dict[str, Any]]:
 
     artist: Dict[str, Any] = artists[0]
     top_tracks_data: Dict[str, Any] = sp.artist_top_tracks(artist["id"], country="US")
-    top_tracks: List[str] = [track["name"] for track in top_tracks_data.get("tracks", [])[:5]]
+    top_tracks: List[str] = [
+        track["name"] for track in top_tracks_data.get("tracks", [])[:5]
+    ]
 
     return {
         "type": "artist",
@@ -44,13 +47,15 @@ async def search_artist(search_query: str) -> Optional[Dict[str, Any]]:
         "followers": artist.get("followers", {}).get("total", 0),
         "url": artist["external_urls"]["spotify"],
         "uri": artist["uri"],
-        "top_tracks": top_tracks
+        "top_tracks": top_tracks,
     }
 
 
 async def search_track(search_query: str) -> Optional[Dict[str, Any]]:
     """Search for a track and return relevant data."""
-    track_results: Dict[str, Any] = sp.search(q=f"track:{search_query}", type="track", limit=1)
+    track_results: Dict[str, Any] = sp.search(
+        q=f"track:{search_query}", type="track", limit=1
+    )
     tracks: List[Dict[str, Any]] = track_results.get("tracks", {}).get("items", [])
 
     if not tracks:
@@ -96,12 +101,12 @@ async def get_spotify_info(search_query: str) -> Optional[Dict[str, Any]]:
 import asyncio
 
 if __name__ == "__main__":
+
     async def main():
         info = await get_spotify_info("Money Pink Floyd")
         pprint.pprint(info)
 
         info = await get_spotify_info("Pink Floyd")
         pprint.pprint(info)
-
 
     asyncio.run(main())

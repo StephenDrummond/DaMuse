@@ -8,13 +8,13 @@ from music_state.queues import queues
 
 # yt_dlp configuration for audio extraction
 ytdl_format_options: Dict[str, Any] = {
-    'format': 'bestaudio/best',  # Best audio quality
-    'noplaylist': True,  # Only single track
-    'quiet': True,  # Suppress yt-dlp output
-    'default_search': 'ytsearch',  # Search if not a URL
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['default', '-tv_simply'],  # Optimize extraction
+    "format": "bestaudio/best",  # Best audio quality
+    "noplaylist": True,  # Only single track
+    "quiet": True,  # Suppress yt-dlp output
+    "default_search": "ytsearch",  # Search if not a URL
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["default", "-tv_simply"],  # Optimize extraction
         },
     },
 }
@@ -51,7 +51,9 @@ class YTDLSource:
         # Build info dictionary with necessary details
         info = {
             "title": info["title"],  # Song title
-            "url": info["url"] if stream else ytdl.prepare_filename(info)  # Stream URL or file path
+            "url": (
+                info["url"] if stream else ytdl.prepare_filename(info)
+            ),  # Stream URL or file path
         }
 
         # Handle case where no information could be extracted

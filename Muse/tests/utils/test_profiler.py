@@ -27,7 +27,7 @@ def mock_get_spotify_info():
         mock_func.return_value = {
             "name": "Comfortably Numb",
             "artists": ["Pink Floyd"],
-            "genres": ["progressive rock", "classic rock"]
+            "genres": ["progressive rock", "classic rock"],
         }
         yield mock_func
 
@@ -68,19 +68,22 @@ def song_info():
     return SongInfo(
         name="Money",
         artists=["Pink Floyd"],
-        genres=["progressive rock", "classic rock"]
+        genres=["progressive rock", "classic rock"],
     )
 
 
 @pytest.mark.asyncio
-async def test_log_event_calls_get_spotify_info(profiler, mock_member, song_name, alpha, liked, mock_get_spotify_info):
+async def test_log_event_calls_get_spotify_info(
+    profiler, mock_member, song_name, alpha, liked, mock_get_spotify_info
+):
     await profiler.log_event(mock_member, song_name, alpha, liked)
     mock_get_spotify_info.assert_awaited_once_with(song_name)
 
 
 @pytest.mark.asyncio
-async def test_log_event_calls__log_preference_group_correctly(profiler, mock_member, song_name, alpha, liked,
-                                                               mock_get_spotify_info):
+async def test_log_event_calls__log_preference_group_correctly(
+    profiler, mock_member, song_name, alpha, liked, mock_get_spotify_info
+):
     # arrange
     profiler._log_preference_group = AsyncMock()
 
@@ -102,12 +105,16 @@ async def test_log_event_calls__log_preference_group_correctly(profiler, mock_me
 
 
 @pytest.mark.asyncio
-async def test_log_event_handles_get_spotify_info_none(profiler, mock_member, song_name, alpha, liked):
+async def test_log_event_handles_get_spotify_info_none(
+    profiler, mock_member, song_name, alpha, liked
+):
     # arrange
     profiler._log_preference_group = AsyncMock()
 
     # Patch get_spotify_info to return None (simulate failure)
-    with patch("utils.profiler.get_spotify_info", new_callable=AsyncMock) as mock_get_info:
+    with patch(
+        "utils.profiler.get_spotify_info", new_callable=AsyncMock
+    ) as mock_get_info:
         mock_get_info.return_value = None
         # Call log_event
         await profiler.log_event(mock_member, song_name, alpha, liked)
@@ -117,13 +124,17 @@ async def test_log_event_handles_get_spotify_info_none(profiler, mock_member, so
 
 
 @pytest.mark.asyncio
-async def test__log_preference_group_calls_log_preference(profiler, mock_id, song_info, alpha, liked):
+async def test__log_preference_group_calls_log_preference(
+    profiler, mock_id, song_info, alpha, liked
+):
     profiler.log_preference = AsyncMock()
 
     await profiler._log_preference_group(mock_id, song_info, alpha, liked)
 
     # 1 song + 1 artist + 5 genres = 4 calls
-    assert profiler.log_preference.await_count == 1 + len(song_info.artists) + len(song_info.genres)
+    assert profiler.log_preference.await_count == 1 + len(song_info.artists) + len(
+        song_info.genres
+    )
 
     # 1 call per input
     profiler.log_preference.assert_any_await(
@@ -139,7 +150,9 @@ async def test__log_preference_group_calls_log_preference(profiler, mock_id, son
 
 
 @pytest.mark.asyncio
-async def test__log_preference_group_handles_failure(profiler, mock_id, song_info, alpha, liked):
+async def test__log_preference_group_handles_failure(
+    profiler, mock_id, song_info, alpha, liked
+):
     profiler.db.execute.side_effect = Exception("Database error")
 
     with patch("utils.profiler.logger.exception") as mock_logger:
@@ -151,7 +164,9 @@ async def test__log_preference_group_handles_failure(profiler, mock_id, song_inf
 
 
 @pytest.mark.asyncio
-async def test_log_preference_db_exception_logs_exception(profiler, mock_id, song_info, alpha, liked):
+async def test_log_preference_db_exception_logs_exception(
+    profiler, mock_id, song_info, alpha, liked
+):
     profiler.db.fetch_val = AsyncMock(side_effect=Exception("Database error"))
 
     with patch("utils.profiler.logger.exception") as mock_logger:
@@ -163,7 +178,9 @@ async def test_log_preference_db_exception_logs_exception(profiler, mock_id, son
 
 
 @pytest.mark.asyncio
-async def test__log_preference_group_target_id_none(profiler, mock_id, song_info, alpha, liked):
+async def test__log_preference_group_target_id_none(
+    profiler, mock_id, song_info, alpha, liked
+):
     profiler.db.fetch_val = AsyncMock(return_value=None)
 
     with patch("utils.profiler.logger.exception") as mock_logger:
@@ -175,7 +192,9 @@ async def test__log_preference_group_target_id_none(profiler, mock_id, song_info
 
 
 @pytest.mark.asyncio
-async def test_log_preference_target_id_none_logs_exception(profiler, mock_id, song_info, alpha, liked):
+async def test_log_preference_target_id_none_logs_exception(
+    profiler, mock_id, song_info, alpha, liked
+):
     profiler.db.fetch_val = AsyncMock(return_value=None)
 
     with patch("utils.profiler.logger.exception") as mock_logger:
@@ -189,18 +208,22 @@ async def test_log_preference_target_id_none_logs_exception(profiler, mock_id, s
 
 
 @pytest.mark.asyncio
-async def test_log_preference_calls_upsert_preference_in_db(profiler, mock_id, song_info, alpha, liked):
+async def test_log_preference_calls_upsert_preference_in_db(
+    profiler, mock_id, song_info, alpha, liked
+):
     profiler.upsert_preference_in_db = AsyncMock()
     profiler.db.fetch_val = AsyncMock(return_value=67890)
 
-    await profiler.log_preference('song_user_likes', song_info.name, mock_id, alpha, liked)
+    await profiler.log_preference(
+        "song_user_likes", song_info.name, mock_id, alpha, liked
+    )
 
     profiler.upsert_preference_in_db.assert_awaited_once_with(
-        table_name='song_user_likes',
+        table_name="song_user_likes",
         user_id=mock_id,
         target_id=67890,
         liked_at=ANY,  # datetime.today() is dynamic
-        foreign_table_id='song_id',
+        foreign_table_id="song_id",
         alpha=alpha,
-        liked=liked
+        liked=liked,
     )

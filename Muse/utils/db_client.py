@@ -13,7 +13,9 @@ class DBClient(object):
         """
         return await self.db.fetch_val(query, discord_id)
 
-    async def insert_if_not_exists(self, table: str, columns: list[str], *values) -> None:
+    async def insert_if_not_exists(
+        self, table: str, columns: list[str], *values
+    ) -> None:
         """Insert a row; skip if key already exists."""
         col_str = ", ".join(columns)
         val_str = ", ".join(f"${i + 1}" for i in range(len(values)))
@@ -25,7 +27,7 @@ class DBClient(object):
         await self.db.execute(query, *values)
 
     async def upsert_preference(
-            self, table: str, key_columns: list[str], update_columns: list[str], *values
+        self, table: str, key_columns: list[str], update_columns: list[str], *values
     ):
         """Insert or update a record. Increments preference_score within [0,1]."""
         key_str = ", ".join(key_columns)

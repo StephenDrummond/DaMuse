@@ -21,7 +21,7 @@ async def run_sql_query(query, fetch=False):
             user=DB_USER,
             password=DB_PASSWORD,
             host=DB_HOST,
-            port=DB_PORT
+            port=DB_PORT,
         )
         print("Database connection created")
 
@@ -39,7 +39,8 @@ async def run_sql_query(query, fetch=False):
 
 async def main():
     # 1 — Create decay function
-    await run_sql_query("""
+    await run_sql_query(
+        """
 CREATE OR REPLACE FUNCTION decay_preferences()
 RETURNS void AS $$
 BEGIN
@@ -56,21 +57,29 @@ BEGIN
     WHERE liked_at < CURRENT_DATE;
 END;
 $$ LANGUAGE plpgsql;
-    """, fetch=False)
+    """,
+        fetch=False,
+    )
 
     # 2 — Schedule with pg_cron (Every night at 4 AM decay_preferences() runs)
-    await run_sql_query("""
+    await run_sql_query(
+        """
 SELECT cron.schedule(
     'nightly_preference_decay',
     '0 4 * * *',
     $$SELECT decay_preferences();$$
 );
-    """, fetch=False)
+    """,
+        fetch=False,
+    )
 
     # 3 — List jobs to check that it worked
-    cron_jobs = await run_sql_query("""
+    cron_jobs = await run_sql_query(
+        """
 SELECT * FROM cron.job;
-    """, fetch=True)
+    """,
+        fetch=True,
+    )
 
     print(cron_jobs)
 
