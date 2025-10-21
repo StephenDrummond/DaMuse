@@ -44,7 +44,10 @@ class Observer(DBClient):
         for row in rows_as_lists:
             self.r.rpush(key, *row)
 
-    async def remove_user_prefs_from_memory(self, channel_id, user_id): ...
+    async def remove_user_prefs_from_memory(self, channel_id, user_id):
+        self.r.delete(f"{channel_id}:{user_id}:song")
+        self.r.delete(f"{channel_id}:{user_id}:artist")
+        self.r.delete(f"{channel_id}:{user_id}:genre")
 
     @staticmethod
     async def pref_table_query_builder(pref_table: str) -> str:
