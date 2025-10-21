@@ -15,31 +15,45 @@ class Observer(DBClient):
 
     def __init__(self, db):
         super().__init__(db)
+
+    async def async_init(self):
         for guild_id, channel_ids in channels_and_members.items():
             for channel_id, member_list in channel_ids.items():
-                self.curator_list[channel_id] = Curator(db, channel_id, member_list)
+                self.curator_list[channel_id] = Curator(self.db, channel_id, member_list)
+                for member in member_list:
+                    await self.cache_prefs(channel_id, member)
 
-    async def load_user_prefs_into_memory(self, channel_id, discord_id):
-        query = await self.preference_query_builder("song_user_likes")
+    async def cache_prefs(self, channel_id, discord_id):
+        await asyncio.gather(
+            self.load_prefs_into_memory(channel_id, discord_id, 'song_user_likes'),
+            self.load_prefs_into_memory(channel_id, discord_id, 'genre_user_likes'),
+            self.load_prefs_into_memory(channel_id, discord_id, 'artist_user_likes')
+        )
+
+    async def load_prefs_into_memory(self, channel_id, discord_id, table: str):
+        query = await self.pref_table_query_builder(table)
+
         rows = await self.db.fetch(
             query, discord_id
         )  # rows is a list of asyncpg.Record
-        key = f"{channel_id}:{discord_id}:genre"
+        rows_as_lists = [list(row.values()) for row in rows]
 
-        print(query)
-        print(rows)
+        key = f"{channel_id}:{discord_id}:{table.split('_', 1)[0]}"
+        for row in rows_as_lists:
+            self.r.rpush(key, *row)
 
-    async def remove_user_prefs_from_memory(self, channel_id, user_id): ...
+    async def remove_user_prefs_from_memory(self, channel_id, user_id):
+        ...
 
     @staticmethod
-    async def preference_query_builder(pref_table: str) -> str:
+    async def pref_table_query_builder(pref_table: str) -> str:
         """
         takes in a preference table and returns a query that gets all the given users preferences in descending order
         :param pref_table:
         :return:
         """
-        type_table = pref_table.split("_", 1)[0] + "s"
-        type_word = pref_table.split("_", 1)[0]
+        type_table = pref_table.split("_", 1)[0] + "s"  # ex: song_user_likes -> songs
+        type_word = pref_table.split("_", 1)[0]  # ex: song_user_likes -> song
 
         query = f"""
                 SELECT 
@@ -58,10 +72,10 @@ async def main():
     db = Database()
     await db.init_pool()
     o = Observer(db)
-    await o.load_user_prefs_into_memory(69420, 123456)
-    await o.load_user_prefs_into_memory(69420, 123456)
-    await o.load_user_prefs_into_memory(69420, 234567)
-    await o.load_user_prefs_into_memory(69420, 234567)
+    await o.cache_prefs(69420, 123456)
+    await o.cache_prefs(69420, 123456)
+    await o.cache_prefs(69420, 234567)
+    await o.cache_prefs(69420, 234567)
 
 
 if __name__ == "__main__":
