@@ -20,7 +20,6 @@ class Database:
 
     def __init__(self) -> None:
         self.pool = None
-        self.mongodb = None
 
     async def init_pool(self) -> None:
         """Create and store the database connection pool."""
