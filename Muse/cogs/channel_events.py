@@ -1,5 +1,3 @@
-from typing import Any
-
 import discord
 from discord.ext import commands
 
@@ -18,7 +16,8 @@ class ChannelEvents(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot: commands.Bot = bot
-        self.librarian: Librarian = Librarian()
+        self.db = bot.db
+        self.librarian: Librarian = Librarian(self.db)
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -28,8 +27,6 @@ class ChannelEvents(commands.Cog):
         - Ensures all members in the guilds are recorded in the database.
         """
         await self.librarian.db.init_pool()
-
-        member_list: list[Any]  # Placeholder list (currently unused)
 
         for guild in self.bot.guilds:
             # Sync current voice channel state to in-memory tracking
@@ -109,8 +106,7 @@ class ChannelEvents(commands.Cog):
 
         :param member: The Discord Member who joined.
         """
-        await self.librarian.db.execute(
-        )
+        await self.librarian.add_member_to_db(member.id)
 
 
 async def setup(bot: commands.Bot) -> None:

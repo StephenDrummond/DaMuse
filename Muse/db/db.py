@@ -16,6 +16,7 @@ DB_PORT = os.getenv("DB_PORT")
 class Database:
     def __init__(self):
         self.pool: Optional[asyncpg.pool.Pool] = None
+        self.mongodb = None
 
     async def init_pool(self):
         """Create and store the database connection pool."""

@@ -5,14 +5,14 @@ from typing import Optional, Dict, Any
 import discord
 from discord.ext import commands
 
+from api.youtube import YTDLSource
 from music_state.queues import queues
 from utils.librarian import Librarian
-from utils.youtube import YTDLSource
 
 # Options for FFmpeg to handle streaming
 FFMPEG_OPTIONS: Dict[str, str] = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn -f opus'  # No video
+    'options': '-vn -f opus -ac 2 -ar 48000'  # No video
 }
 
 # Path to ffmpeg executable
@@ -28,7 +28,8 @@ class Music(commands.Cog):
         """
         self.stop_music: bool = False  # Flag to stop playback
         self.bot: commands.Bot = bot
-        profiler: Librarian = Librarian()  # Profiler instance (unused here)
+        self.db = bot.db
+        librarian: Librarian = Librarian(self.db)  # Librarian instance (unused here)
 
     @commands.command()
     async def play(self, ctx: commands.Context, *, search: Optional[str] = None) -> None:
@@ -52,7 +53,7 @@ class Music(commands.Cog):
             # Add song to queue
             await YTDLSource.from_url(search, ctx)
         except Exception as e:
-            await ctx.send(f"Error retrieving track: {e}")
+            print(f"Error retrieving track: {e}")
             return
 
         # Join or move to the user's voice channel
@@ -107,7 +108,6 @@ class Music(commands.Cog):
         # Create audio source for FFmpeg
         source: discord.FFmpegOpusAudio = await discord.FFmpegOpusAudio.from_probe(
             info["url"],
-            executable=FFMPEG_PATH,
             **FFMPEG_OPTIONS
         )
 

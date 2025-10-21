@@ -6,6 +6,8 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from db.db import Database
+
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
@@ -25,6 +27,10 @@ async def on_ready():
 
 
 async def main():
+    db = Database()
+    await db.init_pool()
+    bot.db = db
+
     async with bot:
         await bot.load_extension("cogs.general")
         await bot.load_extension("cogs.music")
@@ -32,4 +38,5 @@ async def main():
         await bot.start(TOKEN)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

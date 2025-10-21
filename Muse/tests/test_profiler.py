@@ -1,55 +1,139 @@
-import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch, AsyncMock
 
-import discord
+import pytest
 
-from utils.profiler import Profiler
+from utils.profiler import Profiler, SongInfo  # Your actual module
 
 
-class TestProfiler(unittest.IsolatedAsyncioTestCase):
+# Sample mock for a Discord member
+class MockMember:
+    def __init__(self, id):
+        self.id = id
 
-    @patch("utils.profiler.get_spotify_info", new_callable=AsyncMock)
-    @patch("utils.profiler.Database")
-    async def test_log_user_play_event(self, mock_database_class, mock_get_spotify_info):
-        # Arrange
 
-        # Mock Spotify info
-        mock_get_spotify_info.return_value = {
-            "name": "Test Song",
-            "artists": ["Test Artist"],
-            "genres": ["Rock", "Pop"]
+# Fixture for the Profiler instance
+@pytest.fixture
+def profiler():
+    p = Profiler(db=None)
+    p.db = AsyncMock()
+    # p.upsert_preference_in_db = AsyncMock()
+
+    return p
+
+
+# Fixture to patch get_spotify_info for all tests that use it
+@pytest.fixture
+def mock_get_spotify_info():
+    with patch("utils.profiler.get_spotify_info", new_callable=AsyncMock) as mock_func:
+        mock_func.return_value = {
+            "name": "Comfortably Numb",
+            "artists": ["Pink Floyd"],
+            "genres": ["progressive rock", "classic rock"]
         }
+        yield mock_func
 
-        # Mock database methods
-        mock_db_instance = MagicMock()
-        mock_db_instance.fetch_val = AsyncMock(side_effect=[1, 2, 3, 4])  # song_id, artist_id, genre_id...
-        mock_db_instance.execute = AsyncMock()
-        mock_database_class.return_value = mock_db_instance
 
-        # Create Profiler
-        profiler = Profiler()
+# Fixture for a mock Discord member
+@pytest.fixture
+def mock_member():
+    return MockMember(id=12345)
 
-        # Mock Discord member
-        member = MagicMock(spec=discord.Member)
-        member.id = 12345
 
-        # Act
-        await profiler.log_user_play_event(member, "Test Song")
+# fixture for mock id
+@pytest.fixture
+def mock_id():
+    return 12345
 
-        # Assert: Spotify info called
-        mock_get_spotify_info.assert_called_once_with("Test Song")
 
-        # Assert: Database fetch_val calls (song, artist, genres)
-        expected_fetch_calls = [
-            unittest.mock.call("SELECT id FROM songs WHERE title = $1", "Test Song"),
-            unittest.mock.call("SELECT id FROM artists WHERE name = $1", "Test Artist"),
-            unittest.mock.call("SELECT id FROM genres WHERE name = $1", "Rock"),
-            unittest.mock.call("SELECT id FROM genres WHERE name = $1", "Pop"),
-        ]
-        mock_db_instance.fetch_val.assert_has_calls(expected_fetch_calls, any_order=False)
+# Fixture for a sample song name
+@pytest.fixture
+def song_name():
+    return "Comfortably Numb"
 
-        # Assert: upsert_like inserts
-        self.assertEqual(mock_db_instance.execute.call_count, 4)
 
-        insert_queries = [call.args[0] for call in mock_db_instance.execute.call_args_list]
-        self.assertTrue(all("INSERT INTO" in q for q in insert_queries))
+# Fixture for alpha value
+@pytest.fixture
+def alpha():
+    return 0.5
+
+
+# Fixture for liked value
+@pytest.fixture
+def liked():
+    return True
+
+
+# Fixture for song_info
+@pytest.fixture
+def song_info():
+    return SongInfo(
+        name="Money",
+        artists=["Pink Floyd"],
+        genres=["progressive rock", "classic rock"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_log_event_calls_get_spotify_info(profiler, mock_member, song_name, alpha, liked, mock_get_spotify_info):
+    await profiler.log_event(mock_member, song_name, alpha, liked)
+    mock_get_spotify_info.assert_awaited_once_with(song_name)
+
+
+@pytest.mark.asyncio
+async def test_log_event_calls__log_preference_group_correctly(profiler, mock_member, song_name, alpha, liked,
+                                                               mock_get_spotify_info):
+    # arrange
+    profiler._log_preference_group = AsyncMock()
+
+    # act
+    await profiler.log_event(mock_member, song_name, alpha, liked)
+    args, _ = profiler._log_preference_group.call_args
+    member_id_arg, song_info_arg, alpha_arg, liked_arg = args
+
+    # assert
+    assert member_id_arg == mock_member.id
+
+    assert isinstance(song_info_arg, SongInfo)
+    assert song_info_arg.name == "Comfortably Numb"
+    assert song_info_arg.artists == ["Pink Floyd"]
+    assert song_info_arg.genres == ["progressive rock", "classic rock"]
+
+    assert alpha_arg == alpha
+    assert liked_arg == liked
+
+
+@pytest.mark.asyncio
+async def test_log_event_handles_get_spotify_info_none(profiler, mock_member, song_name, alpha, liked):
+    # arrange
+    profiler._log_preference_group = AsyncMock()
+
+    # Patch get_spotify_info to return None (simulate failure)
+    with patch("utils.profiler.get_spotify_info", new_callable=AsyncMock) as mock_get_info:
+        mock_get_info.return_value = None
+        # Call log_event
+        await profiler.log_event(mock_member, song_name, alpha, liked)
+
+        # _log_preference_group should not be called because there is no song info
+        profiler._log_preference_group.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test__log_preference_group_calls_log_preference(profiler, mock_id, song_info, alpha, liked):
+    profiler.log_preference = AsyncMock()
+
+    await profiler._log_preference_group(mock_id, song_info, alpha, liked)
+
+    # 1 song + 1 artist + 5 genres = 4 calls
+    assert profiler.log_preference.await_count == 1 + len(song_info.artists) + len(song_info.genres)
+
+    # 1 call per input
+    profiler.log_preference.assert_any_await(
+        "song_user_likes", song_info.name, mock_id, alpha, liked
+    )
+    profiler.log_preference.assert_any_await(
+        "artist_user_likes", song_info.artists[0], mock_id, alpha, liked
+    )
+    for genre in song_info.genres:
+        profiler.log_preference.assert_any_await(
+            "genre_user_likes", genre, mock_id, alpha, liked
+        )
