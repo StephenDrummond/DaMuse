@@ -19,15 +19,17 @@ class Observer(DBClient):
     async def async_init(self):
         for guild_id, channel_ids in channels_and_members.items():
             for channel_id, member_list in channel_ids.items():
-                self.curator_list[channel_id] = Curator(self.db, channel_id, member_list)
+                self.curator_list[channel_id] = Curator(
+                    self.db, channel_id, member_list
+                )
                 for member in member_list:
                     await self.cache_prefs(channel_id, member)
 
     async def cache_prefs(self, channel_id, discord_id):
         await asyncio.gather(
-            self.load_prefs_into_memory(channel_id, discord_id, 'song_user_likes'),
-            self.load_prefs_into_memory(channel_id, discord_id, 'genre_user_likes'),
-            self.load_prefs_into_memory(channel_id, discord_id, 'artist_user_likes')
+            self.load_prefs_into_memory(channel_id, discord_id, "song_user_likes"),
+            self.load_prefs_into_memory(channel_id, discord_id, "genre_user_likes"),
+            self.load_prefs_into_memory(channel_id, discord_id, "artist_user_likes"),
         )
 
     async def load_prefs_into_memory(self, channel_id, discord_id, table: str):
@@ -42,8 +44,7 @@ class Observer(DBClient):
         for row in rows_as_lists:
             self.r.rpush(key, *row)
 
-    async def remove_user_prefs_from_memory(self, channel_id, user_id):
-        ...
+    async def remove_user_prefs_from_memory(self, channel_id, user_id): ...
 
     @staticmethod
     async def pref_table_query_builder(pref_table: str) -> str:
