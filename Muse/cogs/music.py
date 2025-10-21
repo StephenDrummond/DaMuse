@@ -52,7 +52,7 @@ class Music(commands.Cog):
 
         try:
             # Add song to queue
-            await YTDLSource.from_url(search, ctx)
+            await YTDLSource.search_song(search, ctx)
         except Exception as e:
             print(f"Error retrieving track: {e}")
             return
@@ -103,7 +103,7 @@ class Music(commands.Cog):
             await ctx.send("No more songs queued.")
             return
 
-        # Get the next song in the queue
+        # Pop the next song in the queue
         info: Dict[str, Any] = queues[ctx.guild.id].popleft()  # type: ignore
 
         # Create audio source for FFmpeg

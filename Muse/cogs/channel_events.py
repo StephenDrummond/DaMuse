@@ -26,8 +26,6 @@ class ChannelEvents(commands.Cog):
         - Initializes in-memory tracking of all members currently in voice channels.
         - Ensures all members in the guilds are recorded in the database.
         """
-        await self.librarian.db.init_pool()
-
         for guild in self.bot.guilds:
             # Sync current voice channel state to in-memory tracking
             self.add_channel_members_to_memory(guild)

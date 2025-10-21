@@ -32,7 +32,9 @@ def run_ytdl(url: str):
 
 class YTDLSource:
     @staticmethod
-    async def from_url(url: str, ctx: "commands.Context", stream: bool = True) -> None:
+    async def search_song(
+        url: str, ctx: "commands.Context", stream: bool = True
+    ) -> None:
         """
         Extract audio info from URL or search term,
         add it to the queue, and start playback if not playing.
@@ -62,10 +64,11 @@ class YTDLSource:
             await ctx.send("Couldn't find anything.")
             return
 
-        # Add the track info to the guild's queue
+        # Add the track info to the channel's queue
         if ctx.guild is None:
             await ctx.send("Something went wrong. Try again later.")
             return
+
         queues[ctx.guild.id].append(info)
 
         # If something is already playing, notify the user it's queued

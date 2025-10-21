@@ -1,17 +1,26 @@
+from typing import Dict
+
 import redis
 
+from music_state.channel_members import channels_and_members
+from utils.curator import Curator
 from .db_client import DBClient
 
 
 class Observer(DBClient):
+    curator_list: Dict[int, Curator] = {}
+
     def __init__(self, db):
         super().__init__(db)
+        for guild_id, channel_ids in channels_and_members.items():
+            for channel_id, member_list in channel_ids.items():
+                self.curator_list[channel_id] = Curator(db, channel_id, member_list)
 
 
-async def load_user_prefs_into_memory(self, user_id): ...
+async def load_user_prefs_into_memory(self, channel_id, user_id): ...
 
 
-async def remove_user_prefs_from_memory(self, user_id): ...
+async def remove_user_prefs_from_memory(self, channel_id, user_id): ...
 
 
 def check_connection():
