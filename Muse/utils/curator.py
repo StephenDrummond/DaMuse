@@ -4,14 +4,14 @@ from utils.db_client import DBClient
 
 
 class Curator(DBClient):
-    channel_id = None  # key to access redis / primary identifier for the Curator object
-    member_list: List[int] = None  # list of all members in the channel
+    channel_id: int  # key to access redis / primary identifier for the Curator object
+    member_list: List[int]  # list of all members in the channel
 
     # preferred_genres = pd.DataFrame(columns=["user", "genre", "preference"])
     # preferred_artists = pd.DataFrame(columns=["user", "artist", "preference"])
     # preferred_songs = pd.DataFrame(columns=["user", "song", "preference"])
 
-    def __init__(self, db, channel_id, member_list):
+    def __init__(self, db, channel_id: int, member_list: List[int]):
         super().__init__(db)
         self.channel_id = channel_id
         self.member_list = member_list

@@ -1,7 +1,8 @@
+import asyncio
+
 import discord
 from discord.ext import commands
 
-from music_state.channel_members import channels_and_members, add_member, remove_member
 from utils.librarian import Librarian
 from utils.observer import Observer
 
@@ -30,27 +31,24 @@ class ChannelEvents(commands.Cog):
         """
         for guild in self.bot.guilds:
             # Sync current voice channel state to in-memory tracking
-            self.add_channel_members_to_memory(guild)
+            await self.add_channel_members_to_memory(guild)
 
             # Store all members of the guild into the database
             await self.add_all_guild_members_to_db(guild)
 
-    @staticmethod
-    def add_channel_members_to_memory(guild: discord.Guild) -> None:
+    async def add_channel_members_to_memory(self, guild: discord.Guild) -> None:
         """
         Scans all voice channels in the guild and adds connected members
         to in-memory tracking for quick reference.
 
         :param guild: The Discord Guild to scan.
         """
+        tasks = []
         for channel in guild.voice_channels:
             if channel.members:  # If the channel has members connected
                 for member in channel.members:
-                    add_member(
-                        guild.id, channel.id, member.id
-                    )  # Track member in memory
-                # Debug print to show current state of tracked members
-                print(channels_and_members)
+                    tasks.append(self.observer.cache_prefs(channel.id, member.id))
+        await asyncio.gather(*tasks)
 
     async def add_all_guild_members_to_db(self, guild: discord.Guild) -> None:
         """
@@ -77,28 +75,26 @@ class ChannelEvents(commands.Cog):
         :param before: Previous voice state before change.
         :param after: New voice state after change.
         """
-        guild_id: int = member.guild.id
-
         # Case 1: Member joins a voice channel
         if before.channel is None and after.channel is not None:
-            add_member(guild_id, after.channel.id, member.id)
-            print(f"{member} joined {after.channel}")
+            await self.observer.cache_prefs(after.channel.id, member.id)
 
         # Case 2: Member leaves a voice channel
         elif before.channel is not None and after.channel is None:
-            remove_member(guild_id, before.channel.id, member.id)
-            print(f"{member} left {before.channel}")
+            await self.observer.remove_user_prefs_from_cache(
+                before.channel.id, member.id
+            )
 
         # Case 3: Member moves between voice channels
         elif before.channel != after.channel:
             if before.channel:
-                remove_member(guild_id, before.channel.id, member.id)
+                await self.observer.remove_user_prefs_from_cache(
+                    before.channel.id, member.id
+                )
             if after.channel:
-                add_member(guild_id, after.channel.id, member.id)
-            print(f"{member} moved from {before.channel} to {after.channel}")
-
-        # Debug: Print current in-memory state for tracking
-        print(channels_and_members)
+                await self.observer.remove_user_prefs_from_cache(
+                    after.channel.id, member.id
+                )
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:

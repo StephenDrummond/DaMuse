@@ -5,19 +5,18 @@ import redis
 from redis import Redis
 
 from db.db import Database
-from music_state.channel_members import channels_and_members
 from utils.curator import Curator
 from utils.db_client import DBClient
 
 
 class Observer(DBClient):
-    """ Observer is a singleton class which inherits the DBClient class meant to observe
-        the channels_and_members dictionary and makes updates to the Redis cache when a
-        user joins or leaves a channel. Manages creation and deletion of the Curator
-        class """
+    """Observer is a singleton class which inherits the DBClient class meant to observe
+    the channels_and_members dictionary and makes updates to the Redis cache when a
+    user joins or leaves a channel. Manages creation and deletion of the Curator
+    class"""
 
     curators: Dict[int, Curator] = {}  # maps channel_id -> Curator instance
-    r: Redis = None  # Redis client
+    r: Redis  # Redis client
 
     _instance = None
     _initialized = False
@@ -34,17 +33,6 @@ class Observer(DBClient):
             super().__init__(db)
             self.r = redis.from_url("redis://localhost")
             self._initialized = True
-
-    async def async_init(self):
-        # create Curator instances for all active channels
-        tasks = []
-        for guild_id, channel_ids in channels_and_members.items():
-            for channel_id, member_list in channel_ids.items():
-                self.curators[channel_id] = Curator(self.db, channel_id, member_list)
-                for member in member_list:
-                    tasks.append(self.cache_prefs(channel_id, member))
-        await asyncio.gather(*tasks)
-        print("Observer init done")
 
     async def cache_prefs(self, channel_id, discord_id):
         # load all preference categories concurrently
@@ -68,13 +56,10 @@ class Observer(DBClient):
 
         key = f"{channel_id}:{discord_id}:{table.split('_', 1)[0]}"
 
-        # Create async pipeline
-        async with self.r.pipeline(transaction=False) as pipe:
-            for row in rows_as_lists:
-                # Queue commands — do NOT await these
-                pipe.rpush(key, *row)
-            # Execute the entire batch once
-            await pipe.execute()
+        pipe = self.r.pipeline(transaction=False)
+        for row in rows_as_lists:
+            await pipe.set(key, *row)  # queue commands
+        pipe.execute()
 
     async def remove_user_prefs_from_cache(self, channel_id, user_id):
         # remove user data from Redis
@@ -93,7 +78,7 @@ class Observer(DBClient):
 
     @staticmethod
     def pref_table_query_builder(pref_table: str) -> str:
-        """ Builds query for fetching a user’s preferences from given table name """
+        """Builds query for fetching a user’s preferences from given table name"""
         type_table = pref_table.split("_", 1)[0] + "s"
         type_word = pref_table.split("_", 1)[0]
 
@@ -114,7 +99,6 @@ async def main():
     db = Database()
     await db.init_pool()
     o = Observer(db)  # singleton instance
-    await o.async_init()
     await o.cache_prefs(69420, 123456)
     await o.cache_prefs(69420, 123456)
     await o.cache_prefs(69420, 234567)
