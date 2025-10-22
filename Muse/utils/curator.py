@@ -5,7 +5,7 @@ from utils.db_client import DBClient
 
 class Curator(DBClient):
     channel_id = None  # key to access redis / primary identifier for the Curator object
-    member_list: List[int] = []  # key to access redis / stored as discord_id
+    member_list: List[int] = None  # list of all members in the channel
 
     # preferred_genres = pd.DataFrame(columns=["user", "genre", "preference"])
     # preferred_artists = pd.DataFrame(columns=["user", "artist", "preference"])

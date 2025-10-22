@@ -16,86 +16,86 @@ class Observer(DBClient):
         user joins or leaves a channel. Manages creation and deletion of the Curator
         class """
 
-    curators: Dict[int, Curator] = {}
-    r: Redis = None
+    curators: Dict[int, Curator] = {}  # maps channel_id -> Curator instance
+    r: Redis = None  # Redis client
 
-    _instance = None  # class-level attribute
+    _instance = None
+    _initialized = False
 
     def __new__(cls, *args, **kwargs):
+        # enforce singleton behavior
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self, db):
-        super().__init__(db)
-        self.r = redis.from_url("redis://localhost")
+        # prevent reinitialization
+        if not self._initialized:
+            super().__init__(db)
+            self.r = redis.from_url("redis://localhost")
+            self._initialized = True
 
     async def async_init(self):
+        # create Curator instances for all active channels
+        tasks = []
         for guild_id, channel_ids in channels_and_members.items():
-            for (
-                    channel_id,
-                    member_list,
-            ) in channel_ids.items():  # all the members from every channel
-                self.curators[channel_id] = (
-                    Curator(  # one curator created for all active channels
-                        self.db, channel_id, member_list
-                    )
-                )
+            for channel_id, member_list in channel_ids.items():
+                self.curators[channel_id] = Curator(self.db, channel_id, member_list)
                 for member in member_list:
-                    await self.cache_prefs(
-                        channel_id, member
-                    )  # can maybe speed this up with asyncio task gather
-
+                    tasks.append(self.cache_prefs(channel_id, member))
+        await asyncio.gather(*tasks)
         print("Observer init done")
 
     async def cache_prefs(self, channel_id, discord_id):
-        await asyncio.gather(  # concurrently load everything in to Redis
+        # load all preference categories concurrently
+        await asyncio.gather(
             self.load_prefs_into_memory(channel_id, discord_id, "song_user_likes"),
             self.load_prefs_into_memory(channel_id, discord_id, "genre_user_likes"),
             self.load_prefs_into_memory(channel_id, discord_id, "artist_user_likes"),
         )
-        if (
-                channel_id not in self.curators
-        ):  # create a new Curator and add it to the curator_list with key = channel_id
+
+        # ensure Curator exists for channel and update member list
+        if channel_id not in self.curators:
             self.curators[channel_id] = Curator(self.db, channel_id, [discord_id])
         else:
             self.curators[channel_id].member_list.append(discord_id)
 
     async def load_prefs_into_memory(self, channel_id, discord_id, table: str):
-        query = await self.pref_table_query_builder(table)
-
-        rows = await self.db.fetch(
-            query, discord_id
-        )  # rows is a list of asyncpg.Record
+        query = self.pref_table_query_builder(table)
+        # fetch user preference rows from database
+        rows = await self.db.fetch(query, discord_id)
         rows_as_lists = [list(row.values()) for row in rows]
 
         key = f"{channel_id}:{discord_id}:{table.split('_', 1)[0]}"
-        for row in rows_as_lists:
-            await self.r.rpush(key, *row)
+
+        # Create async pipeline
+        async with self.r.pipeline(transaction=False) as pipe:
+            for row in rows_as_lists:
+                # Queue commands — do NOT await these
+                pipe.rpush(key, *row)
+            # Execute the entire batch once
+            await pipe.execute()
 
     async def remove_user_prefs_from_cache(self, channel_id, user_id):
+        # remove user data from Redis
         await asyncio.gather(
             self.r.delete(f"{channel_id}:{user_id}:song"),
             self.r.delete(f"{channel_id}:{user_id}:artist"),
             self.r.delete(f"{channel_id}:{user_id}:genre"),
         )
 
+        # update in-memory member tracking
         self.curators[channel_id].member_list.remove(user_id)
 
-        if (
-                len(self.curators[channel_id].member_list) == 0
-        ):  # if member list is empty (no on in channel)
-            del self.curators[channel_id]  # delete respective Curator
+        # delete Curator if channel becomes empty
+        if len(self.curators[channel_id].member_list) == 0:
+            del self.curators[channel_id]
 
     @staticmethod
-    async def pref_table_query_builder(pref_table: str) -> str:
-        """
-        takes in a preference table and returns a query that gets all the given users preferences in descending order
-        :param pref_table:
-        :return:
-        """
-        type_table = pref_table.split("_", 1)[0] + "s"  # ex: song_user_likes -> songs
-        type_word = pref_table.split("_", 1)[0]  # ex: song_user_likes -> song
+    def pref_table_query_builder(pref_table: str) -> str:
+        """ Builds query for fetching a user’s preferences from given table name """
+        type_table = pref_table.split("_", 1)[0] + "s"
+        type_word = pref_table.split("_", 1)[0]
 
         query = f"""
                 SELECT 
@@ -113,7 +113,7 @@ class Observer(DBClient):
 async def main():
     db = Database()
     await db.init_pool()
-    o = Observer(db)
+    o = Observer(db)  # singleton instance
     await o.async_init()
     await o.cache_prefs(69420, 123456)
     await o.cache_prefs(69420, 123456)
