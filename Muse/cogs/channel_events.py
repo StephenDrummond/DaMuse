@@ -3,6 +3,7 @@ from discord.ext import commands
 
 from music_state.channel_members import channels_and_members, add_member, remove_member
 from utils.librarian import Librarian
+from utils.observer import Observer
 
 
 class ChannelEvents(commands.Cog):
@@ -18,6 +19,7 @@ class ChannelEvents(commands.Cog):
         self.bot: commands.Bot = bot
         self.db = bot.db  # type: ignore
         self.librarian: Librarian = Librarian(self.db)
+        self.observer: Observer = Observer(self.db)
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
