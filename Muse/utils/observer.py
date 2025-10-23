@@ -1,10 +1,10 @@
+import asyncio
 import json
 from typing import Dict
 
 import redis
 from redis import Redis
 
-from db.db import Database
 from utils.curator import Curator
 from utils.db_client import DBClient
 
@@ -85,26 +85,29 @@ class Observer(DBClient):
         type_word = pref_table.split("_", 1)[0]
 
         query = f"""
-                SELECT 
-                tt.id AS {type_word}_id,
-                pt.preference_score AS preference_score
-                FROM users u
-                JOIN {pref_table} pt ON u.id = pt.user_id
-                JOIN {type_table} tt ON pt.{type_word}_id = tt.id
-                WHERE u.discord_id = $1
-                order by pt.preference_score DESC;"""
+            (SELECT 
+            tt.id AS {type_word}_id,
+            tt.name AS {type_word}_name,
+            pt.preference_score AS preference_score
+            FROM users u
+            JOIN {pref_table} pt ON u.id = pt.user_id
+            JOIN {type_table} tt ON pt.{type_word}= tt.id
+            WHERE u.discord_id = 123456
+            and pt.preference_score > 0.7
+            order by pt.preference_score desc
+            limit 200
+            )
+            union all
+            (SELECT 
+            tt.id AS {type_word}_id,
+            tt.name AS {type_word}_name,
+            pt.preference_score AS preference_score
+            FROM users u
+            JOIN {pref_table} pt ON u.id = pt.user_id
+            JOIN {type_table} tt ON pt.{type_word}_id = tt.id
+            WHERE u.discord_id = 123456
+            and pt.preference_score < 0.3
+            order by pt.preference_score asc
+            limit 200
+            );"""
         return query
-
-
-import asyncio
-
-
-async def main():
-    db = Database()
-    await db.init_pool()
-    o = Observer(db)
-
-    await o.load_prefs_into_memory(12, 123456, "song_user_likes")
-
-
-asyncio.run(main())
