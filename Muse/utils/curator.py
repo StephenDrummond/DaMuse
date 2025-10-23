@@ -48,5 +48,4 @@ class Curator(DBClient):
         df = df.groupby("pref_score", as_index=False)
         return df.mean().sort_values("pref_score", ascending=False)
 
-    async def update(self):
-        ...
+    async def update(self): ...
