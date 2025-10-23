@@ -49,7 +49,7 @@ class Observer(DBClient):
             self.curators[channel_id].member_ids.append(discord_id)
 
     async def load_prefs_into_memory(self, channel_id, discord_id, table: str):
-        query = self.pref_table_query_builder(table)
+        query = self.pref_table_query_builder(table, discord_id)
         # fetch user preference rows from database
         rows = await self.db.fetch(query, discord_id)
 
@@ -79,7 +79,7 @@ class Observer(DBClient):
             del self.curators[channel_id]
 
     @staticmethod
-    def pref_table_query_builder(pref_table: str) -> str:
+    def pref_table_query_builder(pref_table: str, discord_id: int) -> str:
         """Builds query for fetching a user’s preferences from given table name"""
         type_table = pref_table.split("_", 1)[0] + "s"
         type_word = pref_table.split("_", 1)[0]
@@ -92,7 +92,7 @@ class Observer(DBClient):
             FROM users u
             JOIN {pref_table} pt ON u.id = pt.user_id
             JOIN {type_table} tt ON pt.{type_word}_id= tt.id
-            WHERE u.discord_id = 123456
+            WHERE u.discord_id = {discord_id}
             and pt.preference_score > 0.7
             order by pt.preference_score desc
             limit 200
@@ -105,7 +105,7 @@ class Observer(DBClient):
             FROM users u
             JOIN {pref_table} pt ON u.id = pt.user_id
             JOIN {type_table} tt ON pt.{type_word}_id = tt.id
-            WHERE u.discord_id = 123456
+            WHERE u.discord_id = {discord_id}
             and pt.preference_score < 0.3
             order by pt.preference_score asc
             limit 200
