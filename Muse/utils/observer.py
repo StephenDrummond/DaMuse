@@ -44,9 +44,9 @@ class Observer(DBClient):
 
         # ensure Curator exists for channel and update member list
         if channel_id not in self.curators:
-            self.curators[channel_id] = Curator(self.db, channel_id, [discord_id])
+            self.curators[channel_id] = Curator(self.db, channel_id, [discord_id], self.r)
         else:
-            self.curators[channel_id].member_list.append(discord_id)
+            self.curators[channel_id].member_ids.append(discord_id)
 
     async def load_prefs_into_memory(self, channel_id, discord_id, table: str):
         query = self.pref_table_query_builder(table)
@@ -72,10 +72,10 @@ class Observer(DBClient):
         )
 
         # update in-memory member tracking
-        self.curators[channel_id].member_list.remove(user_id)
+        self.curators[channel_id].member_ids.remove(user_id)
 
         # delete Curator if channel becomes empty
-        if len(self.curators[channel_id].member_list) == 0:
+        if len(self.curators[channel_id].member_ids) == 0:
             del self.curators[channel_id]
 
     @staticmethod
