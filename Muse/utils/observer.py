@@ -1,4 +1,4 @@
-import asyncio
+import json
 from typing import Dict
 
 import redis
@@ -52,14 +52,16 @@ class Observer(DBClient):
         query = self.pref_table_query_builder(table)
         # fetch user preference rows from database
         rows = await self.db.fetch(query, discord_id)
-        rows_as_lists = [list(row.values()) for row in rows]
 
         key = f"{channel_id}:{discord_id}:{table.split('_', 1)[0]}"
 
-        pipe = self.r.pipeline(transaction=False)
-        for row in rows_as_lists:
-            await pipe.set(key, *row)  # queue commands
-        pipe.execute()
+        data = [[row[0], round(row[1], 4)] for row in rows]
+
+        data_json = json.dumps(
+            data
+        )  # turns data into a string, needs to be json.load()ed to read values
+
+        await self.r.set(key, data_json)
 
     async def remove_user_prefs_from_cache(self, channel_id, user_id):
         # remove user data from Redis
@@ -85,7 +87,6 @@ class Observer(DBClient):
         query = f"""
                 SELECT 
                 tt.id AS {type_word}_id,
-                tt.name AS {type_word}_name,
                 pt.preference_score AS preference_score
                 FROM users u
                 JOIN {pref_table} pt ON u.id = pt.user_id
@@ -95,15 +96,15 @@ class Observer(DBClient):
         return query
 
 
+import asyncio
+
+
 async def main():
     db = Database()
     await db.init_pool()
-    o = Observer(db)  # singleton instance
-    await o.cache_prefs(69420, 123456)
-    await o.cache_prefs(69420, 123456)
-    await o.cache_prefs(69420, 234567)
-    await o.cache_prefs(69420, 234567)
+    o = Observer(db)
+
+    await o.load_prefs_into_memory(12, 123456, "song_user_likes")
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+asyncio.run(main())
