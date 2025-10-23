@@ -91,7 +91,7 @@ class Observer(DBClient):
             pt.preference_score AS preference_score
             FROM users u
             JOIN {pref_table} pt ON u.id = pt.user_id
-            JOIN {type_table} tt ON pt.{type_word}= tt.id
+            JOIN {type_table} tt ON pt.{type_word}_id= tt.id
             WHERE u.discord_id = 123456
             and pt.preference_score > 0.7
             order by pt.preference_score desc
