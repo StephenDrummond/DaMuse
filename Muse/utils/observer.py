@@ -44,7 +44,9 @@ class Observer(DBClient):
 
         # ensure Curator exists for channel and update member list
         if channel_id not in self.curators:
-            self.curators[channel_id] = Curator(self.db, channel_id, [discord_id], self.r)
+            self.curators[channel_id] = Curator(
+                self.db, channel_id, [discord_id], self.r
+            )
         else:
             self.curators[channel_id].member_ids.append(discord_id)
 

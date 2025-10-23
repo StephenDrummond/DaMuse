@@ -99,12 +99,17 @@ class Music(commands.Cog):
             self.stop_music = False
             return
 
-        if not queues.get(ctx.guild.id):  # type: ignore # No songs queued
+        voice_channel = ctx.voice_client.channel.id  # type: ignore
+        if not voice_channel:  # type: ignore
+            await ctx.send("You must be in a voice channel to play music!")
+            return
+
+        if not queues.get(voice_channel):  # type: ignore # No songs queued
             await ctx.send("No more songs queued.")
             return
 
         # Pop the next song in the queue
-        info: Dict[str, Any] = queues[ctx.guild.id].popleft()  # type: ignore
+        info: Dict[str, Any] = queues[voice_channel].popleft()  # type: ignore
 
         # Create audio source for FFmpeg
         source: discord.FFmpegOpusAudio = await discord.FFmpegOpusAudio.from_probe(

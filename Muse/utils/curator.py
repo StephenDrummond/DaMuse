@@ -1,4 +1,6 @@
+import asyncio
 import json
+import random
 from typing import List
 
 import pandas as pd
@@ -19,20 +21,32 @@ class Curator(DBClient):
         self.r = r
 
     async def curate(self):
-        song_prefs = self.gather_data('song')
-        genre_prefs = self.gather_data('genre')
-        artist_prefs = self.gather_data('artist')
+        tasks = [
+            self.gather_data("song"),
+            self.gather_data("genre"),
+            self.gather_data("artist"),
+        ]
+
+        song_prefs, genre_prefs, artist_prefs = await asyncio.gather(*tasks)
+        window = (
+            20 if len(genre_prefs) >= 20 else len(genre_prefs)
+        )  # assign the window size for a genre
+        selection = random.randint(0, window - 1)  # noqa: F841 #JUST FOR NOW
 
     async def gather_data(self, pref_type: str):
+        """this model returns averages for the preferences of all channel members"""
         rows = []
 
         for member in self.member_ids:
             data = await self.r.get(f"{self.channel_id}:{member}:{pref_type}")
-            if not data: continue
+            if not data:
+                continue
             data = json.loads(data)
             rows.append(data)
 
-        return pd.DataFrame(rows, columns=(f"{pref_type}_id", "pref_score"))
+        df = pd.DataFrame(rows, columns=(f"{pref_type}_id", "pref_score"))
+        df = df.groupby("pref_score", as_index=False)
+        return df.mean().sort_values("pref_score", ascending=False)
 
     async def update(self):
         ...
