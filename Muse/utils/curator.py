@@ -29,9 +29,12 @@ class Curator(DBClient):
 
         song_prefs, genre_prefs, artist_prefs = await asyncio.gather(*tasks)
         window = (
-            20 if len(genre_prefs) >= 20 else len(genre_prefs)
+            20
+            if len(genre_prefs) >= 20
+            else len(genre_prefs)  # top 20 genres from the group
         )  # assign the window size for a genre
-        selection = random.randint(0, window - 1)  # noqa: F841 #JUST FOR NOW
+        selection = random.randint(0, window - 1)
+        selection = genre_prefs.iloc[selection]
 
     async def gather_data(self, pref_type: str):
         """this model returns averages for the preferences of all channel members"""
@@ -48,4 +51,5 @@ class Curator(DBClient):
         df = df.groupby("pref_score", as_index=False)
         return df.mean().sort_values("pref_score", ascending=False)
 
-    async def update(self): ...
+    async def update(self):
+        ...
