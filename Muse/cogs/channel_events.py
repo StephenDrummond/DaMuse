@@ -81,20 +81,14 @@ class ChannelEvents(commands.Cog):
 
         # Case 2: Member leaves a voice channel
         elif before.channel is not None and after.channel is None:
-            await self.observer.remove_user_prefs_from_cache(
-                before.channel.id, member.id
-            )
+            await self.observer.remove_cached_prefs(before.channel.id, member.id)
 
         # Case 3: Member moves between voice channels
         elif before.channel != after.channel:
             if before.channel:
-                await self.observer.remove_user_prefs_from_cache(
-                    before.channel.id, member.id
-                )
+                await self.observer.remove_cached_prefs(before.channel.id, member.id)
             if after.channel:
-                await self.observer.remove_user_prefs_from_cache(
-                    after.channel.id, member.id
-                )
+                await self.observer.remove_cached_prefs(after.channel.id, member.id)
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
