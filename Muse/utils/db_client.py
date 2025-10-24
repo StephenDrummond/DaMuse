@@ -1,3 +1,6 @@
+import asyncpg
+from asyncpg import Record
+
 from db.db import Database  # type: ignore
 
 
@@ -26,6 +29,31 @@ class DBClient(object):
         """
         await self.db.execute(query, *values)
 
+    async def get_target_id(
+        self, table_name: str, lookup_column: str, value: str
+    ) -> int:
+        """Fetch the ID for a target value in a table."""
+        query = f"SELECT id FROM {table_name} WHERE {lookup_column} = $1"
+        target_id = await self.db.fetch_val(query, value)
+        if target_id is None:
+            raise ValueError(f"No ID found for {value} in {table_name}")
+        return target_id
+
+    async def safe_upsert_preference(
+        self,
+        table_name: str,
+        key_columns: list[str],
+        update_columns: list[str],
+        *values,
+    ):
+        """Wraps upsert_preference with error handling."""
+        try:
+            await self.upsert_preference(
+                table_name, key_columns, update_columns, *values
+            )
+        except Exception as e:
+            print(f"Error upserting {table_name} with values {values}: {e}")
+
     async def upsert_preference(
         self, table: str, key_columns: list[str], update_columns: list[str], *values
     ):
@@ -48,3 +76,48 @@ class DBClient(object):
             SET {update_str}
         """
         await self.db.execute(query, *values)
+
+    async def fetch_preferences(
+        self, discord_id: int, table: str
+    ) -> list[Record] | None:
+        query = self.pref_table_query_builder(table, discord_id)
+
+        try:
+            return await self.db.fetch_val(query, discord_id)
+        except asyncpg.PostgresError as e:
+            print(e)
+            return None
+
+    @staticmethod
+    def pref_table_query_builder(pref_table: str, discord_id: int) -> str:
+        """Builds query for fetching a user’s preferences from given table name"""
+        type_table = pref_table.split("_", 1)[0] + "s"
+        type_word = pref_table.split("_", 1)[0]
+
+        query = f"""
+            (SELECT
+            tt.id AS {type_word}_id,
+            tt.name AS {type_word}_name,
+            pt.preference_score AS preference_score
+            FROM users u
+            JOIN {pref_table} pt ON u.id = pt.user_id
+            JOIN {type_table} tt ON pt.{type_word}_id= tt.id
+            WHERE u.discord_id = {discord_id}
+            and pt.preference_score > 0.7
+            order by pt.preference_score desc
+            limit 200
+            )
+            union all
+            (SELECT
+            tt.id AS {type_word}_id,
+            tt.name AS {type_word}_name,
+            pt.preference_score AS preference_score
+            FROM users u
+            JOIN {pref_table} pt ON u.id = pt.user_id
+            JOIN {type_table} tt ON pt.{type_word}_id = tt.id
+            WHERE u.discord_id = {discord_id}
+            and pt.preference_score < 0.3
+            order by pt.preference_score asc
+            limit 200
+            );"""
+        return query

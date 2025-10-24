@@ -44,26 +44,29 @@ class Observer(DBClient):
 
         # ensure Curator exists for channel and update member list
         if channel_id not in self.curators:
-            self.curators[channel_id] = Curator(self.db, channel_id, [discord_id], self.r)
+            self.curators[channel_id] = Curator(
+                self.db, channel_id, [discord_id], self.r
+            )
         else:
             self.curators[channel_id].member_ids.append(discord_id)
 
     async def load_prefs_into_memory(self, channel_id, discord_id, table: str):
-        query = self.pref_table_query_builder(table, discord_id)
         # fetch user preference rows from database
-        rows = await self.db.fetch(query, discord_id)
+        rows = await self.fetch_preferences(discord_id, table)
+        if rows is None:
+            return
 
         key = f"{channel_id}:{discord_id}:{table.split('_', 1)[0]}"
 
         data = [[row[0], round(row[1], 4)] for row in rows]
 
-        data_json = json.dumps(
+        data_json = json.dumps(  # turns data into a string, needs to be json.load()ed to read values
             data
-        )  # turns data into a string, needs to be json.load()ed to read values
+        )
 
         await self.r.set(key, data_json)
 
-    async def remove_user_prefs_from_cache(self, channel_id, user_id):
+    async def remove_cached_prefs(self, channel_id, user_id):
         # remove user data from Redis
         await asyncio.gather(
             self.r.delete(f"{channel_id}:{user_id}:song"),
@@ -77,37 +80,3 @@ class Observer(DBClient):
         # delete Curator if channel becomes empty
         if len(self.curators[channel_id].member_ids) == 0:
             del self.curators[channel_id]
-
-    @staticmethod
-    def pref_table_query_builder(pref_table: str, discord_id: int) -> str:
-        """Builds query for fetching a user’s preferences from given table name"""
-        type_table = pref_table.split("_", 1)[0] + "s"
-        type_word = pref_table.split("_", 1)[0]
-
-        query = f"""
-            (SELECT 
-            tt.id AS {type_word}_id,
-            tt.name AS {type_word}_name,
-            pt.preference_score AS preference_score
-            FROM users u
-            JOIN {pref_table} pt ON u.id = pt.user_id
-            JOIN {type_table} tt ON pt.{type_word}_id= tt.id
-            WHERE u.discord_id = {discord_id}
-            and pt.preference_score > 0.7
-            order by pt.preference_score desc
-            limit 200
-            )
-            union all
-            (SELECT 
-            tt.id AS {type_word}_id,
-            tt.name AS {type_word}_name,
-            pt.preference_score AS preference_score
-            FROM users u
-            JOIN {pref_table} pt ON u.id = pt.user_id
-            JOIN {type_table} tt ON pt.{type_word}_id = tt.id
-            WHERE u.discord_id = {discord_id}
-            and pt.preference_score < 0.3
-            order by pt.preference_score asc
-            limit 200
-            );"""
-        return query
