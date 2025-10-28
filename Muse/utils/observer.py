@@ -11,7 +11,7 @@ from utils.db_client import DBClient
 
 class Observer(DBClient):
     """Observer is a singleton class which inherits the DBClient class meant to observe
-    the channels_and_members dictionary and makes updates to the Redis cache when a
+    all the channel states and makes updates to the Redis cache when a
     user joins or leaves a channel. Manages creation and deletion of the Curator
     class"""
 
@@ -32,11 +32,11 @@ class Observer(DBClient):
             super().__init__(db)
             self.r = redis.from_url("redis://localhost")
             self._initialized = True
-    
-    async def update_prefs(self, channel_id, discord_id):
-        ...
 
-    async def cache_prefs(self, channel_id, discord_id):
+    async def update_cache(self, channel_id, discord_id, keystr: str):
+        data = self.read_cache(channel_id, discord_id, keystr)
+
+    async def create_cache(self, channel_id, discord_id):
         # load all preference categories concurrently
         await asyncio.gather(
             self.load_prefs_into_memory(channel_id, discord_id, "song_user_likes"),
@@ -53,13 +53,14 @@ class Observer(DBClient):
             self.curators[channel_id].member_ids.append(discord_id)
 
     async def load_prefs_into_memory(self, channel_id, discord_id, table: str):
+        """Loads prefs into redis cache in this format
+        channel_id:discord_id:keystr  :  """
         # fetch user preference rows from database
         rows = await self.fetch_preferences(discord_id, table)
         if rows is None:
             return
 
-        # example -> 'channel_id:discord_id:song'
-        key = f"{channel_id}:{discord_id}:{table.split('_', 1)[0]}"
+        key = self.key_creator(channel_id, discord_id, table.split('_', 1)[0])
 
         data = [[row[0], round(row[1], 4)] for row in rows]
 
@@ -69,17 +70,29 @@ class Observer(DBClient):
 
         await self.r.set(key, data_json)
 
-    async def remove_cached_prefs(self, channel_id, user_id):
+    async def read_cache(self, channel_id, discord_id, keystr: str):
+        key = self.key_creator(channel_id, discord_id, keystr)
+        data = await self.r.get(key)
+
+        return json.loads(data)
+
+    async def delete_cache(self, channel_id, discord_id):
         # remove user data from Redis
         await asyncio.gather(
-            self.r.delete(f"{channel_id}:{user_id}:song"),
-            self.r.delete(f"{channel_id}:{user_id}:artist"),
-            self.r.delete(f"{channel_id}:{user_id}:genre"),
+            self.r.delete(self.key_creator(channel_id, discord_id, 'song')),
+            self.r.delete(self.key_creator(channel_id, discord_id, 'artist')),
+            self.r.delete(self.key_creator(channel_id, discord_id, 'genre')),
         )
 
         # update in-memory member tracking
-        self.curators[channel_id].member_ids.remove(user_id)
+        self.curators[channel_id].member_ids.remove(discord_id)
 
         # delete Curator if channel becomes empty
         if len(self.curators[channel_id].member_ids) == 0:
             del self.curators[channel_id]
+
+    @staticmethod
+    def key_creator(channel_id: int, discord_id: int, keystr: str):
+        """ Creates a redis key string,
+        example -> 'channel_id:discord_id:song' """
+        return f"{channel_id}:{discord_id}:{keystr}"
