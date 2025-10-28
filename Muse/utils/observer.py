@@ -22,7 +22,6 @@ class Observer(DBClient):
     _initialized = False
 
     def __new__(cls, *args, **kwargs):
-        # enforce singleton behavior
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
@@ -33,6 +32,9 @@ class Observer(DBClient):
             super().__init__(db)
             self.r = redis.from_url("redis://localhost")
             self._initialized = True
+    
+    async def update_prefs(self, channel_id, discord_id):
+        ...
 
     async def cache_prefs(self, channel_id, discord_id):
         # load all preference categories concurrently
@@ -56,6 +58,7 @@ class Observer(DBClient):
         if rows is None:
             return
 
+        # example -> 'channel_id:discord_id:song'
         key = f"{channel_id}:{discord_id}:{table.split('_', 1)[0]}"
 
         data = [[row[0], round(row[1], 4)] for row in rows]

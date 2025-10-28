@@ -58,7 +58,7 @@ class ChannelEvents(commands.Cog):
         :param guild: The Discord Guild whose members should be added.
         """
         async for member in guild.fetch_members(limit=None):
-            await self.librarian.add_member_to_db(member.id)
+            await self.librarian.add_member_to_db(member.id, member.name)
 
     @commands.Cog.listener()
     async def on_voice_state_update(

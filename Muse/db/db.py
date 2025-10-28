@@ -30,10 +30,12 @@ class Database:
                 password=DB_PASSWORD,
                 host=DB_HOST,
                 port=DB_PORT,
-                min_size=5,
+                min_size=1,
                 max_size=20,
+                timeout=5,
             )
             print("Database pool created")
+            print("TEST")
         except Exception as e:
             print("Error creating database pool:", e)
 
@@ -64,3 +66,9 @@ class Database:
             raise RuntimeError("Database pool not initialized")
         async with self.pool.acquire() as connection:
             return await connection.fetchrow(query, *args)
+
+    async def batch_insert(self, query, rows):
+        if self.pool is None:
+            raise RuntimeError("Database pool not initialized")
+        async with self.pool.acquire() as connection:
+            await connection.executemany(query, rows)

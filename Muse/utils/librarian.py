@@ -1,14 +1,22 @@
+import asyncio
+
+from db.db import Database
+from api.spotify import get_spotify_info
 from .db_client import DBClient
+import pandas as pd
 
 
 class Librarian(DBClient):
     def __init__(self, db):
         super().__init__(db)
 
-    async def add_member_to_db(self, member_id: int):
+    async def add_member_to_db(self, member_id: int, member_name: str):
         if type(member_id) is not int:
             raise TypeError("member_id must be an int")
-        await self.insert_if_not_exists("users", ["discord_id"], member_id)
+
+        await self.insert_if_not_exists(
+            "users", ["discord_id", "discord_name"], member_id, member_name
+        )
 
     async def add_artist_to_db(self, artist_name: str):
         if type(artist_name) is not str:

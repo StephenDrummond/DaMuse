@@ -5,8 +5,10 @@ from datetime import datetime
 from typing import List
 
 import discord
+import redis
 
-from api.spotify import get_spotify_info
+from db.db import Database
+from api.spotify import search_track
 from .db_client import DBClient
 
 logger = logging.getLogger(__name__)
@@ -32,6 +34,7 @@ class Profiler(DBClient):
 
     def __init__(self, db):
         super().__init__(db)
+        self.r = redis.from_url("redis://localhost")
 
     # Map preference tables to target table/column for fetching IDs
     TABLE_KEY_MAPPING = {
@@ -44,9 +47,11 @@ class Profiler(DBClient):
         self, member: discord.Member, song: str, alpha: float, liked: bool
     ) -> None:
         """Log a user interaction (play, like, skip, etc.) for a song."""
-        info = await get_spotify_info(song)
+        info = await search_track(song)
         if info is None:
             return
+        
+        print(info["type"])
 
         song_info = SongInfo(
             name=info["name"],
@@ -98,3 +103,31 @@ class Profiler(DBClient):
             )
         except ValueError as e:
             logger.warning(e)
+
+
+async def main():
+    db = Database()
+    db.init_pool
+    await db.init_pool()
+
+    print("prep")
+    profiler = Profiler(db)
+
+    print("p")
+    class MockMember:
+        id = 283796442437517313
+
+    member = MockMember()
+
+    # Example: Log a test event
+    song_name = "Blinding Lights"
+    alpha = 0.4
+    liked = True
+
+    await profiler.log_event(member, song_name, alpha, liked)
+
+    print("Logged preference event successfully.")
+
+# Run
+if __name__ == "__main__":
+    asyncio.run(main())
