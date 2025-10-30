@@ -16,7 +16,7 @@ class Observer(DBClient):
     class"""
 
     curators: Dict[int, Curator] = {}  # maps channel_id -> Curator instance
-    r: Redis  # Redis client
+    r: Redis
 
     _instance = None
     _initialized = False
@@ -33,8 +33,15 @@ class Observer(DBClient):
             self.r = redis.from_url("redis://localhost")
             self._initialized = True
 
-    async def update_cache(self, channel_id, discord_id, keystr: str):
-        data = self.read_cache(channel_id, discord_id, keystr)
+    async def update_cache(self, channel_id, discord_id, keystr: str, item_id: int, pref_score: int):
+        data = await self.read_cache(channel_id, discord_id, keystr)
+        if not data or item_id not in data:
+            return False
+
+        data[item_id] = pref_score
+        key = self.key_creator(channel_id, discord_id, keystr)
+        self.r.set(key, json.dumps(data))
+        return True
 
     async def create_cache(self, channel_id, discord_id):
         # load all preference categories concurrently
@@ -62,7 +69,7 @@ class Observer(DBClient):
 
         key = self.key_creator(channel_id, discord_id, table.split('_', 1)[0])
 
-        data = [[row[0], round(row[1], 4)] for row in rows]
+        data = {row[0]: round(row[1], 4) for row in rows}
 
         data_json = json.dumps(  # turns data into a string, needs to be json.load()ed to read values
             data
@@ -70,18 +77,19 @@ class Observer(DBClient):
 
         await self.r.set(key, data_json)
 
-    async def read_cache(self, channel_id, discord_id, keystr: str):
+    async def read_cache(self, channel_id, discord_id, keystr: str) -> dict[int: int] | None:
         key = self.key_creator(channel_id, discord_id, keystr)
         data = await self.r.get(key)
+        data = json.loads(data)
 
-        return json.loads(data)
+        return data
 
     async def delete_cache(self, channel_id, discord_id):
         # remove user data from Redis
-        await asyncio.gather(
-            self.r.delete(self.key_creator(channel_id, discord_id, 'song')),
-            self.r.delete(self.key_creator(channel_id, discord_id, 'artist')),
-            self.r.delete(self.key_creator(channel_id, discord_id, 'genre')),
+        self.r.delete(
+            self.key_creator(channel_id, discord_id, 'song'),
+            self.key_creator(channel_id, discord_id, 'artist'),
+            self.key_creator(channel_id, discord_id, 'genre'),
         )
 
         # update in-memory member tracking
