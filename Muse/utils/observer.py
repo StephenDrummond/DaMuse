@@ -35,7 +35,7 @@ class Observer(DBClient):
 
     async def update_cache(self, channel_id, discord_id, keystr: str, item_id: int, pref_score: int):
         data = await self.read_cache(channel_id, discord_id, keystr)
-        if not data or item_id not in data:
+        if not data:
             return False
 
         data[item_id] = pref_score
@@ -75,7 +75,7 @@ class Observer(DBClient):
             data
         )
 
-        await self.r.set(key, data_json)
+        self.r.set(key, data_json)
 
     async def read_cache(self, channel_id, discord_id, keystr: str) -> dict[int: int] | None:
         key = self.key_creator(channel_id, discord_id, keystr)
