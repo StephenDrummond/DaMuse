@@ -92,7 +92,9 @@ class Observer(DBClient):
             self.key_creator(channel_id, discord_id, 'genre'),
         )
 
-        # update in-memory member tracking
+    async def delete_cache_update_curators(self, channel_id, discord_id):
+        await self.delete_cache(channel_id, discord_id)
+        # update curator holding that member
         self.curators[channel_id].member_ids.remove(discord_id)
 
         # delete Curator if channel becomes empty
