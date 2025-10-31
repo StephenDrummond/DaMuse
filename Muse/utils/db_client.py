@@ -1,3 +1,5 @@
+import asyncio
+
 import asyncpg
 from asyncpg import Record
 
@@ -17,7 +19,7 @@ class DBClient(object):
         return await self.db.fetch_val(query, discord_id)
 
     async def insert_if_not_exists(
-        self, table: str, columns: list[str], *values
+            self, table: str, columns: list[str], *values
     ) -> None:
         """Insert a row; skip if key already exists."""
         col_str = ", ".join(columns)
@@ -30,7 +32,7 @@ class DBClient(object):
         await self.db.execute(query, *values)
 
     async def get_target_id(
-        self, table_name: str, lookup_column: str, value: str
+            self, table_name: str, lookup_column: str, value: str
     ) -> int:
         """Fetch the ID for a target value in a table."""
         query = f"SELECT id FROM {table_name} WHERE {lookup_column} = $1"
@@ -40,7 +42,7 @@ class DBClient(object):
         return target_id
 
     async def upsert_all_preferences(
-        self, table: str, rows: dict[int, float], user: int
+            self, table: str, user: int, rows: dict[int, float]
     ):
         """Insert or update multiple records efficiently using executemany()."""
         item_column = table.split("_", 1)[0] + "_id"
@@ -74,9 +76,9 @@ class DBClient(object):
             print(f"Error upserting {table} with values {values}: {e}")
 
     async def fetch_preferences(
-        self, discord_id: int, table: str
+            self, discord_id: int, table: str
     ) -> list[Record] | None:
-        query = self.build_pref_table_query(table, discord_id)
+        query = self.build_pref_table_query(table)
 
         try:
             return await self.db.fetch(query, discord_id)
@@ -85,10 +87,10 @@ class DBClient(object):
             return None
 
     @staticmethod
-    def build_pref_table_query(pref_table: str, discord_id: int) -> str:
+    def build_pref_table_query(pref_table: str) -> str:
         """Builds query for fetching a user’s preferences from given table name"""
-        type_table = pref_table.split("_", 1)[0] + "s"
-        type_word = pref_table.split("_", 1)[0]
+        type_table = pref_table.split("_", 1)[0] + "s"  # ex song_user_likes -> songs
+        type_word = pref_table.split("_", 1)[0]  # ex song_user_likes -> song
 
         query = f"""
             (SELECT
@@ -120,7 +122,7 @@ class DBClient(object):
 
     @staticmethod
     def build_upsert_query(
-        table: str, key_columns: list[str], update_columns: list[str], values: list
+            table: str, key_columns: list[str], update_columns: list[str], values: tuple[int, int, float]
     ) -> str:
         key_str = ", ".join(key_columns)
 
@@ -142,3 +144,14 @@ class DBClient(object):
             ON CONFLICT ({key_str}) DO UPDATE
             SET {update_str};
         """
+
+
+async def main(table='song_user_likes', user=283796442437517313, rows={1027: 0.9, 4965: 0.3}):
+    db = Database()
+    await db.init_pool()
+    dbc = DBClient(db)
+
+    await dbc.upsert_all_preferences(table, user, rows)
+
+
+asyncio.run(main())

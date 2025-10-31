@@ -34,7 +34,7 @@ class Observer(DBClient):
             self._initialized = True
 
     async def update_cache(
-        self, channel_id, discord_id, keystr: str, item_id: int, pref_score: int
+            self, channel_id, discord_id, keystr: str, item_id: int, pref_score: int
     ):
         data = await self.read_cache(channel_id, discord_id, keystr)
         if not data:
@@ -84,7 +84,7 @@ class Observer(DBClient):
         await self.r.set(key, data_json)
 
     async def read_cache(
-        self, channel_id, discord_id, keystr: str
+            self, channel_id, discord_id, keystr: str
     ) -> dict[int, float] | None:
         key = self.key_creator(channel_id, discord_id, keystr)
         data = await self.r.get(key)
@@ -97,27 +97,24 @@ class Observer(DBClient):
 
         await asyncio.gather(
             self.upsert_all_preferences(
-                "song_user_likes",
+                "song_user_likes", discord_id,
                 await self.read_cache(channel_id, discord_id, "song"),
-                discord_id,
             ),
             self.upsert_all_preferences(
-                "artist_user_likes",
+                "artist_user_likes", discord_id,
                 await self.read_cache(
                     channel_id,
                     discord_id,
                     "artist",
                 ),
-                discord_id,
             ),
             self.upsert_all_preferences(
-                "genre_user_likes",
+                "genre_user_likes", discord_id,
                 await self.read_cache(
                     channel_id,
                     discord_id,
                     "genre",
                 ),
-                discord_id,
             ),
         )
 
@@ -129,6 +126,7 @@ class Observer(DBClient):
         )
 
     async def delete_cache_update_curators(self, channel_id, discord_id):
+        # upload memory to storage and delete.
         await self.delete_cache(channel_id, discord_id)
         # update curator holding that member
         self.curators[channel_id].member_ids.remove(discord_id)
@@ -139,8 +137,8 @@ class Observer(DBClient):
 
     @staticmethod
     def key_creator(channel_id: int, discord_id: int, keystr: str):
-        """Creates a redis key string,
-        example -> 'channel_id:discord_id:song'"""
+        """ Creates a redis key string,
+        example -> 'channel_id:discord_id:song' """
         return f"{channel_id}:{discord_id}:{keystr}"
 
 
