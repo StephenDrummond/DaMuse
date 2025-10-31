@@ -1,13 +1,9 @@
-import asyncio
-
 from db.db import Database
-from api.spotify import get_spotify_info
 from .db_client import DBClient
-import pandas as pd
 
 
 class Librarian(DBClient):
-    def __init__(self, db):
+    def __init__(self, db: Database):
         super().__init__(db)
 
     async def add_member_to_db(self, member_id: int, member_name: str):

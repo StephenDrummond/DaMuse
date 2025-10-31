@@ -47,7 +47,7 @@ class ChannelEvents(commands.Cog):
         for channel in guild.voice_channels:
             if channel.members:  # If the channel has members connected
                 for member in channel.members:
-                    tasks.append(self.observer.cache_prefs(channel.id, member.id))
+                    tasks.append(self.observer.create_cache(channel.id, member.id))
         await asyncio.gather(*tasks)
 
     async def add_all_guild_members_to_db(self, guild: discord.Guild) -> None:
@@ -77,24 +77,18 @@ class ChannelEvents(commands.Cog):
         """
         # Case 1: Member joins a voice channel
         if before.channel is None and after.channel is not None:
-            await self.observer.cache_prefs(after.channel.id, member.id)
+            await self.observer.create_cache(after.channel.id, member.id)
 
         # Case 2: Member leaves a voice channel
         elif before.channel is not None and after.channel is None:
-            await self.observer.remove_user_prefs_from_cache(
-                before.channel.id, member.id
-            )
+            await self.observer.delete_cache(before.channel.id, member.id)
 
         # Case 3: Member moves between voice channels
         elif before.channel != after.channel:
             if before.channel:
-                await self.observer.remove_user_prefs_from_cache(
-                    before.channel.id, member.id
-                )
+                await self.observer.delete_cache(before.channel.id, member.id)
             if after.channel:
-                await self.observer.remove_user_prefs_from_cache(
-                    after.channel.id, member.id
-                )
+                await self.observer.delete_cache(after.channel.id, member.id)
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
@@ -104,7 +98,7 @@ class ChannelEvents(commands.Cog):
 
         :param member: The Discord Member who joined.
         """
-        await self.librarian.add_member_to_db(member.id)
+        await self.librarian.add_member_to_db(member.id, member.name)
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -39,43 +39,40 @@ class DBClient(object):
             raise ValueError(f"No ID found for {value} in {table_name}")
         return target_id
 
-    async def safe_upsert_preference(
-        self,
-        table_name: str,
-        key_columns: list[str],
-        update_columns: list[str],
-        *values,
-    ):
-        """Wraps upsert_preference with error handling."""
-        try:
-            await self.upsert_preference(
-                table_name, key_columns, update_columns, *values
-            )
-        except Exception as e:
-            print(f"Error upserting {table_name} with values {values}: {e}")
-
     async def upsert_preference(
         self, table: str, key_columns: list[str], update_columns: list[str], *values
     ):
-        """Insert or update a record. Increments preference_score within [0,1]."""
-        key_str = ", ".join(key_columns)
-        update_str = ", ".join(
-            f"{col} = "
-            + (
-                f"GREATEST(LEAST({table}.{col} + EXCLUDED.{col}, 1.0), 0.0)"
-                if col == "preference_score"
-                else f"EXCLUDED.{col}"
+        """Insert or update a record. IBinds preference between [0,1]."""
+        try:
+            key_str = ", ".join(key_columns)  # ex -> user_id, song_id
+
+            # Example: preference_score capped 0–1, other columns replaced
+            # preference_score = GREATEST(LEAST(table.preference_score +
+            #                    EXCLUDED.preference_score, 1.0), 0.0),
+            # liked_at = EXCLUDED.liked_at
+
+            update_str = ", ".join(
+                f"{col} = "
+                + (
+                    f"GREATEST(LEAST({table}.{col} + EXCLUDED.{col}, 1.0), 0.0)"
+                    if col == "preference_score"
+                    else f"EXCLUDED.{col}"
+                )
+                for col in update_columns
             )
-            for col in update_columns
-        )
-        placeholders = ", ".join(f"${i + 1}" for i in range(len(values)))
-        query = f"""
-            INSERT INTO {table} ({', '.join(key_columns + update_columns)})
-            VALUES ({placeholders})
-            ON CONFLICT ({key_str}) DO UPDATE
-            SET {update_str}
-        """
-        await self.db.execute(query, *values)
+
+            placeholders = ", ".join(
+                f"${i + 1}" for i in range(len(values))  # $1 ... $n
+            )
+            query = f"""
+                INSERT INTO {table} ({', '.join(key_columns + update_columns)})
+                VALUES ({placeholders})
+                ON CONFLICT ({key_str}) DO UPDATE
+                SET {update_str}
+            """
+            await self.db.execute(query, *values)
+        except Exception as e:
+            print(f"Error upserting {table} with values {values}: {e}")
 
     async def fetch_preferences(
         self, discord_id: int, table: str
@@ -83,7 +80,7 @@ class DBClient(object):
         query = self.pref_table_query_builder(table, discord_id)
 
         try:
-            return await self.db.fetch_val(query, discord_id)
+            return await self.db.fetch(query, discord_id)
         except asyncpg.PostgresError as e:
             print(e)
             return None
@@ -100,9 +97,9 @@ class DBClient(object):
             tt.name AS {type_word}_name,
             pt.preference_score AS preference_score
             FROM users u
-            JOIN {pref_table} pt ON u.id = pt.user_id
+            JOIN {pref_table} pt ON u.discord_id = pt.user_id
             JOIN {type_table} tt ON pt.{type_word}_id= tt.id
-            WHERE u.discord_id = {discord_id}
+            WHERE u.discord_id = ($1)
             and pt.preference_score > 0.7
             order by pt.preference_score desc
             limit 200
@@ -113,9 +110,9 @@ class DBClient(object):
             tt.name AS {type_word}_name,
             pt.preference_score AS preference_score
             FROM users u
-            JOIN {pref_table} pt ON u.id = pt.user_id
+            JOIN {pref_table} pt ON u.discord_id = pt.user_id
             JOIN {type_table} tt ON pt.{type_word}_id = tt.id
-            WHERE u.discord_id = {discord_id}
+            WHERE u.discord_id = ($1)
             and pt.preference_score < 0.3
             order by pt.preference_score asc
             limit 200

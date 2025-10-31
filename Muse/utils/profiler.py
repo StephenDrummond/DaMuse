@@ -50,8 +50,6 @@ class Profiler(DBClient):
         info = await search_track(song)
         if info is None:
             return
-        
-        print(info["type"])
 
         song_info = SongInfo(
             name=info["name"],
@@ -91,7 +89,7 @@ class Profiler(DBClient):
             target_id = await self.get_target_id(
                 target_table, lookup_column, target_name
             )
-            await self.safe_upsert_preference(
+            await self.upsert_preference(
                 table_name,
                 ["user_id", table_id],
                 ["liked_at", "preference_score", "liked"],
@@ -110,23 +108,22 @@ async def main():
     db.init_pool
     await db.init_pool()
 
-    print("prep")
     profiler = Profiler(db)
 
-    print("p")
     class MockMember:
         id = 283796442437517313
 
     member = MockMember()
 
     # Example: Log a test event
-    song_name = "Blinding Lights"
-    alpha = 0.4
+    song_name = "old town road"
+    alpha = 0.2
     liked = True
 
-    await profiler.log_event(member, song_name, alpha, liked)
+    await profiler.log_event(member, song_name, alpha, liked)  # type: ignore
 
     print("Logged preference event successfully.")
+
 
 # Run
 if __name__ == "__main__":

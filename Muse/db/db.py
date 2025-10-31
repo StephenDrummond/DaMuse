@@ -35,7 +35,6 @@ class Database:
                 timeout=5,
             )
             print("Database pool created")
-            print("TEST")
         except Exception as e:
             print("Error creating database pool:", e)
 

@@ -4,7 +4,7 @@ import random
 from typing import List
 
 import pandas as pd
-from redis import Redis
+import redis.asyncio as redis
 
 from utils.db_client import DBClient
 
@@ -12,9 +12,9 @@ from utils.db_client import DBClient
 class Curator(DBClient):
     channel_id: int  # key to access redis / primary identifier for the Curator object
     member_ids: List[int]  # list of all members in the channel
-    r: Redis
+    r: redis.Redis
 
-    def __init__(self, db, channel_id: int, member_list: List[int], r: Redis):
+    def __init__(self, db, channel_id: int, member_list: List[int], r: redis.Redis):
         super().__init__(db)
         self.channel_id = channel_id
         self.member_ids = member_list
@@ -51,5 +51,4 @@ class Curator(DBClient):
         df = df.groupby("pref_score", as_index=False)
         return df.mean().sort_values("pref_score", ascending=False)
 
-    async def update(self):
-        ...
+    async def update(self): ...
