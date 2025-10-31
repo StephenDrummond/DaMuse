@@ -47,7 +47,7 @@ class ChannelEvents(commands.Cog):
         for channel in guild.voice_channels:
             if channel.members:  # If the channel has members connected
                 for member in channel.members:
-                    tasks.append(self.observer.cache_prefs(channel.id, member.id))
+                    tasks.append(self.observer.create_cache(channel.id, member.id))
         await asyncio.gather(*tasks)
 
     async def add_all_guild_members_to_db(self, guild: discord.Guild) -> None:
@@ -58,7 +58,7 @@ class ChannelEvents(commands.Cog):
         :param guild: The Discord Guild whose members should be added.
         """
         async for member in guild.fetch_members(limit=None):
-            await self.librarian.add_member_to_db(member.id)
+            await self.librarian.add_member_to_db(member.id, member.name)
 
     @commands.Cog.listener()
     async def on_voice_state_update(
@@ -77,7 +77,7 @@ class ChannelEvents(commands.Cog):
         """
         # Case 1: Member joins a voice channel
         if before.channel is None and after.channel is not None:
-            await self.observer.cache_prefs(after.channel.id, member.id)
+            await self.observer.create_cache(after.channel.id, member.id)
 
         # Case 2: Member leaves a voice channel
         elif before.channel is not None and after.channel is None:
@@ -98,7 +98,7 @@ class ChannelEvents(commands.Cog):
 
         :param member: The Discord Member who joined.
         """
-        await self.librarian.add_member_to_db(member.id)
+        await self.librarian.add_member_to_db(member.id, member.name)
 
 
 async def setup(bot: commands.Bot) -> None:

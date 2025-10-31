@@ -4,7 +4,7 @@ import random
 from typing import List
 
 import pandas as pd
-from redis import Redis
+import redis.asyncio as redis
 
 from utils.db_client import DBClient
 
@@ -12,9 +12,9 @@ from utils.db_client import DBClient
 class Curator(DBClient):
     channel_id: int  # key to access redis / primary identifier for the Curator object
     member_ids: List[int]  # list of all members in the channel
-    r: Redis
+    r: redis.Redis
 
-    def __init__(self, db, channel_id: int, member_list: List[int], r: Redis):
+    def __init__(self, db, channel_id: int, member_list: List[int], r: redis.Redis):
         super().__init__(db)
         self.channel_id = channel_id
         self.member_ids = member_list
@@ -29,9 +29,12 @@ class Curator(DBClient):
 
         song_prefs, genre_prefs, artist_prefs = await asyncio.gather(*tasks)
         window = (
-            20 if len(genre_prefs) >= 20 else len(genre_prefs)
+            20
+            if len(genre_prefs) >= 20
+            else len(genre_prefs)  # top 20 genres from the group
         )  # assign the window size for a genre
-        selection = random.randint(0, window - 1)  # noqa: F841 #JUST FOR NOW
+        selection = random.randint(0, window - 1)
+        selection = genre_prefs.iloc[selection]
 
     async def gather_data(self, pref_type: str):
         """this model returns averages for the preferences of all channel members"""

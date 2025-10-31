@@ -9,8 +9,8 @@ from utils.observer import Observer
 
 @pytest.fixture
 def observer():
-    obs = Observer(db=None)
-    obs.db = AsyncMock()
+    db = AsyncMock
+    obs = Observer(db)  # type: ignore
     obs.r = AsyncMock()  # mock Redis
     obs.curators = {}  # reset curators
     return obs
