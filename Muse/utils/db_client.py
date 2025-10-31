@@ -39,37 +39,36 @@ class DBClient(object):
             raise ValueError(f"No ID found for {value} in {table_name}")
         return target_id
 
-    async def upsert_preference(
-        self, table: str, key_columns: list[str], update_columns: list[str], *values
+    async def upsert_all_preferences(
+        self, table: str, rows: dict[int, float], user: int
     ):
-        """Insert or update a record. IBinds preference between [0,1]."""
+        """Insert or update multiple records efficiently using executemany()."""
+        item_column = table.split("_", 1)[0] + "_id"
+        key_columns = ["user_id", item_column]
+        update_columns = ["preference_score"]
+
         try:
-            key_str = ", ".join(key_columns)  # ex -> user_id, song_id
+            # Convert dict into list of tuples for executemany
+            values = [
+                (user, item_id, pref_score) for item_id, pref_score in rows.items()
+            ]
 
-            # Example: preference_score capped 0–1, other columns replaced
-            # preference_score = GREATEST(LEAST(table.preference_score +
-            #                    EXCLUDED.preference_score, 1.0), 0.0),
-            # liked_at = EXCLUDED.liked_at
-
-            update_str = ", ".join(
-                f"{col} = "
-                + (
-                    f"GREATEST(LEAST({table}.{col} + EXCLUDED.{col}, 1.0), 0.0)"
-                    if col == "preference_score"
-                    else f"EXCLUDED.{col}"
-                )
-                for col in update_columns
+            # Build query using first row just to get placeholders
+            query = self.build_upsert_query(
+                table, key_columns, update_columns, values[0]
             )
 
-            placeholders = ", ".join(
-                f"${i + 1}" for i in range(len(values))  # $1 ... $n
-            )
-            query = f"""
-                INSERT INTO {table} ({', '.join(key_columns + update_columns)})
-                VALUES ({placeholders})
-                ON CONFLICT ({key_str}) DO UPDATE
-                SET {update_str}
-            """
+            await self.db.batch_insert(query, values)
+
+        except Exception as e:
+            print(f"Error bulk upserting {table} with {len(rows)} rows: {e}")
+
+    async def upsert_preference(self, table: str, *values):
+        """Insert or update a record. Binds preference between [0,1]."""
+        key_columns = ", ".join(["user_id", table.split("_", 1)[0]])
+        update_columns = ["liked", "liked_at", "preference_score"]
+        try:
+            query = self.build_upsert_query(table, key_columns, update_columns, values)
             await self.db.execute(query, *values)
         except Exception as e:
             print(f"Error upserting {table} with values {values}: {e}")
@@ -77,7 +76,7 @@ class DBClient(object):
     async def fetch_preferences(
         self, discord_id: int, table: str
     ) -> list[Record] | None:
-        query = self.pref_table_query_builder(table, discord_id)
+        query = self.build_pref_table_query(table, discord_id)
 
         try:
             return await self.db.fetch(query, discord_id)
@@ -86,7 +85,7 @@ class DBClient(object):
             return None
 
     @staticmethod
-    def pref_table_query_builder(pref_table: str, discord_id: int) -> str:
+    def build_pref_table_query(pref_table: str, discord_id: int) -> str:
         """Builds query for fetching a user’s preferences from given table name"""
         type_table = pref_table.split("_", 1)[0] + "s"
         type_word = pref_table.split("_", 1)[0]
@@ -118,3 +117,28 @@ class DBClient(object):
             limit 200
             );"""
         return query
+
+    @staticmethod
+    def build_upsert_query(
+        table: str, key_columns: list[str], update_columns: list[str], values: list
+    ) -> str:
+        key_str = ", ".join(key_columns)
+
+        update_str = ", ".join(
+            f"{col} = "
+            + (
+                f"GREATEST(LEAST({col} + EXCLUDED.{col}, 1.0), 0.0)"
+                if col == "preference_score"
+                else f"EXCLUDED.{col}"
+            )
+            for col in update_columns
+        )
+
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(values)))
+
+        return f"""
+            INSERT INTO {table} ({', '.join(key_columns + update_columns)})
+            VALUES ({placeholders})
+            ON CONFLICT ({key_str}) DO UPDATE
+            SET {update_str};
+        """

@@ -67,11 +67,9 @@ class Observer(DBClient):
         # fetch user preference rows from database
         rows = await self.fetch_preferences(discord_id, table)
         if rows is None:
-            print(table)
             return
 
         key = self.key_creator(channel_id, discord_id, table.split("_", 1)[0])
-        print(rows)
 
         song_id_index = 0
         preference_score_index = 2
@@ -87,7 +85,7 @@ class Observer(DBClient):
 
     async def read_cache(
         self, channel_id, discord_id, keystr: str
-    ) -> dict[int, int] | None:
+    ) -> dict[int, float] | None:
         key = self.key_creator(channel_id, discord_id, keystr)
         data = await self.r.get(key)
         data = json.loads(data)
@@ -96,6 +94,32 @@ class Observer(DBClient):
 
     async def delete_cache(self, channel_id, discord_id):
         # push updated value to Postgres
+
+        await asyncio.gather(
+            self.upsert_all_preferences(
+                "song_user_likes",
+                await self.read_cache(channel_id, discord_id, "song"),
+                discord_id,
+            ),
+            self.upsert_all_preferences(
+                "artist_user_likes",
+                await self.read_cache(
+                    channel_id,
+                    discord_id,
+                    "artist",
+                ),
+                discord_id,
+            ),
+            self.upsert_all_preferences(
+                "genre_user_likes",
+                await self.read_cache(
+                    channel_id,
+                    discord_id,
+                    "genre",
+                ),
+                discord_id,
+            ),
+        )
 
         # remove user data from Redis
         await self.r.delete(
@@ -131,7 +155,7 @@ async def main():
     print(await o.read_cache(cid, did, "song"))
 
     await o.update_cache(cid, did, "song", 1027, 1)
-    print(await o.read_cache(cid, did, "song"))
+    print(type(await o.read_cache(cid, did, "song")))
 
     await o.delete_cache(cid, did)
     print(await o.r.get(key))
