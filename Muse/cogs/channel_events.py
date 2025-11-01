@@ -47,7 +47,7 @@ class ChannelEvents(commands.Cog):
         for channel in guild.voice_channels:
             if channel.members:  # If the channel has members connected
                 for member in channel.members:
-                    tasks.append(self.observer.create_cache(channel.id, member.id))
+                    tasks.append(self.observer.init_user_cache(channel.id, member.id))
         await asyncio.gather(*tasks)
 
     async def add_all_guild_members_to_db(self, guild: discord.Guild) -> None:
@@ -77,7 +77,7 @@ class ChannelEvents(commands.Cog):
         """
         # Case 1: Member joins a voice channel
         if before.channel is None and after.channel is not None:
-            await self.observer.create_cache(after.channel.id, member.id)
+            await self.observer.init_user_cache(after.channel.id, member.id)
 
         # Case 2: Member leaves a voice channel
         elif before.channel is not None and after.channel is None:
@@ -85,10 +85,16 @@ class ChannelEvents(commands.Cog):
 
         # Case 3: Member moves between voice channels
         elif before.channel != after.channel:
-            if before.channel:
-                await self.observer.delete_cache(before.channel.id, member.id)
-            if after.channel:
-                await self.observer.delete_cache(after.channel.id, member.id)
+            if before.channel and after.channel:
+                self.observer.change_key_name(
+                    before.channel.id, after.channel.id, "song", member.id
+                )
+                self.observer.change_key_name(
+                    before.channel.id, after.channel.id, "artist", member.id
+                )
+                self.observer.change_key_name(
+                    before.channel.id, after.channel.id, "genre", member.id
+                )
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
