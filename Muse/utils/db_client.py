@@ -2,6 +2,7 @@ import asyncio
 
 import asyncpg
 from asyncpg import Record
+from datetime import datetime
 
 from db.db import Database  # type: ignore
 
@@ -19,7 +20,7 @@ class DBClient(object):
         return await self.db.fetch_val(query, discord_id)
 
     async def insert_if_not_exists(
-            self, table: str, columns: list[str], *values
+        self, table: str, columns: list[str], *values
     ) -> None:
         """Insert a row; skip if key already exists."""
         col_str = ", ".join(columns)
@@ -32,7 +33,7 @@ class DBClient(object):
         await self.db.execute(query, *values)
 
     async def get_target_id(
-            self, table_name: str, lookup_column: str, value: str
+        self, table_name: str, lookup_column: str, value: str
     ) -> int:
         """Fetch the ID for a target value in a table."""
         query = f"SELECT id FROM {table_name} WHERE {lookup_column} = $1"
@@ -42,17 +43,18 @@ class DBClient(object):
         return target_id
 
     async def upsert_all_preferences(
-            self, table: str, user: int, rows: dict[int, float]
+        self, table: str, user: int, rows: dict[int, float]
     ):
         """Insert or update multiple records efficiently using executemany()."""
         item_column = table.split("_", 1)[0] + "_id"
         key_columns = ["user_id", item_column]
-        update_columns = ["preference_score"]
+        update_columns = ["preference_score", "liked_at"]
 
         try:
             # Convert dict into list of tuples for executemany
             values = [
-                (user, item_id, pref_score) for item_id, pref_score in rows.items()
+                (user, item_id, pref_score, datetime.now())
+                for item_id, pref_score in rows.items()
             ]
 
             # Build query using first row just to get placeholders
@@ -76,7 +78,7 @@ class DBClient(object):
             print(f"Error upserting {table} with values {values}: {e}")
 
     async def fetch_preferences(
-            self, discord_id: int, table: str
+        self, discord_id: int, table: str
     ) -> list[Record] | None:
         query = self.build_pref_table_query(table)
 
@@ -122,14 +124,17 @@ class DBClient(object):
 
     @staticmethod
     def build_upsert_query(
-            table: str, key_columns: list[str], update_columns: list[str], values: tuple[int, int, float]
+        table: str,
+        key_columns: list[str],
+        update_columns: list[str],
+        values: tuple[int, int, float],
     ) -> str:
         key_str = ", ".join(key_columns)
 
         update_str = ", ".join(
             f"{col} = "
             + (
-                f"GREATEST(LEAST({col} + EXCLUDED.{col}, 1.0), 0.0)"
+                f"GREATEST(LEAST(EXCLUDED.{col}, 1.0), 0.0)"
                 if col == "preference_score"
                 else f"EXCLUDED.{col}"
             )
@@ -146,7 +151,9 @@ class DBClient(object):
         """
 
 
-async def main(table='song_user_likes', user=283796442437517313, rows={1027: 0.9, 4965: 0.3}):
+async def main(
+    table="song_user_likes", user=283796442437517313, rows={1027: 0.9, 4965: 0.3}
+):
     db = Database()
     await db.init_pool()
     dbc = DBClient(db)
