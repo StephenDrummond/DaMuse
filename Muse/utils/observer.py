@@ -34,7 +34,7 @@ class Observer(DBClient):
             self._initialized = True
 
     async def update_cache(
-            self, channel_id, discord_id, keystr: str, item_id: int, pref_score: int
+        self, channel_id, discord_id, keystr: str, item_id: int, pref_score: int
     ):
         data = await self.read_cache(channel_id, discord_id, keystr)
         if not data:
@@ -45,7 +45,7 @@ class Observer(DBClient):
         await self.r.set(key, json.dumps(data))
         return True
 
-    async def create_cache(self, channel_id, discord_id):
+    async def init_user_cache(self, channel_id, discord_id):
         # load all preference categories concurrently
         await asyncio.gather(
             self.load_prefs_into_memory(channel_id, discord_id, "song_user_likes"),
@@ -64,12 +64,14 @@ class Observer(DBClient):
     async def load_prefs_into_memory(self, channel_id, discord_id, table: str):
         """Loads prefs into redis cache in this format
         channel_id:discord_id:keystr  :"""
+
+        key = self.key_creator(channel_id, discord_id, table.split("_", 1)[0])
+
         # fetch user preference rows from database
         rows = await self.fetch_preferences(discord_id, table)
         if rows is None:
+            self.r.set(json.dumps(None))
             return
-
-        key = self.key_creator(channel_id, discord_id, table.split("_", 1)[0])
 
         song_id_index = 0
         preference_score_index = 2
@@ -84,7 +86,7 @@ class Observer(DBClient):
         await self.r.set(key, data_json)
 
     async def read_cache(
-            self, channel_id, discord_id, keystr: str
+        self, channel_id, discord_id, keystr: str
     ) -> dict[int, float] | None:
         key = self.key_creator(channel_id, discord_id, keystr)
         data = await self.r.get(key)
@@ -97,11 +99,13 @@ class Observer(DBClient):
 
         await asyncio.gather(
             self.upsert_all_preferences(
-                "song_user_likes", discord_id,
+                "song_user_likes",
+                discord_id,
                 await self.read_cache(channel_id, discord_id, "song"),
             ),
             self.upsert_all_preferences(
-                "artist_user_likes", discord_id,
+                "artist_user_likes",
+                discord_id,
                 await self.read_cache(
                     channel_id,
                     discord_id,
@@ -109,7 +113,8 @@ class Observer(DBClient):
                 ),
             ),
             self.upsert_all_preferences(
-                "genre_user_likes", discord_id,
+                "genre_user_likes",
+                discord_id,
                 await self.read_cache(
                     channel_id,
                     discord_id,
@@ -135,10 +140,17 @@ class Observer(DBClient):
         if len(self.curators[channel_id].member_ids) == 0:
             del self.curators[channel_id]
 
+    async def change_key_name(
+        self, before_channel_id, after_channel_id, keystr, discord_id
+    ):
+        bkey = self.key_creator(before_channel_id, discord_id, keystr)
+        akey = self.key_creator(after_channel_id, discord_id, keystr)
+        self.r.rename(bkey, akey)
+
     @staticmethod
     def key_creator(channel_id: int, discord_id: int, keystr: str):
-        """ Creates a redis key string,
-        example -> 'channel_id:discord_id:song' """
+        """Creates a redis key string,
+        example -> 'channel_id:discord_id:song'"""
         return f"{channel_id}:{discord_id}:{keystr}"
 
 
@@ -149,7 +161,7 @@ async def main():
     cid = 1
     did = 283796442437517313
     key = o.key_creator(cid, did, "song")
-    await o.create_cache(cid, did)
+    await o.init_user_cache(cid, did)
     print(await o.read_cache(cid, did, "song"))
 
     await o.update_cache(cid, did, "song", 1027, 1)

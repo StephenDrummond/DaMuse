@@ -23,7 +23,7 @@ class Librarian(DBClient):
         if type(artist_id) is not int or type(title) is not str:
             raise TypeError
         await self.insert_if_not_exists(
-            "songs", ["title", "artist_id"], title, artist_id
+            "songs", ["name",], title, artist_id
         )
 
     async def add_genre_to_db(self, name: str):
