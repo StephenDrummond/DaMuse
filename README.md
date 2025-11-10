@@ -2,7 +2,7 @@
 
 A **Discord music bot** that automatically curates, plays, and shuffles tracks based on a **shared genre profile** derived from the combined preferences of everyone in a voice channel.
 
-By tracking recent play requests from channel participants, the bot builds a **dynamic, community-driven playlist** that adapts as users join or leave, creating an evolving listening experience tailored to the current audience.
+By tracking previous play requests from channel participants, the bot dynamically curates songs and adapts as users join or leave, creating a listening experience tailored to the current audience.
 
 ---
 
@@ -12,7 +12,6 @@ By tracking recent play requests from channel participants, the bot builds a **d
 - **Community-Driven Music** — Plays songs that match the tastes of the current listeners.
 - **Dynamic Adaptation** — Updates playlists in real time as users join or leave the voice channel.
 - **Shuffle & Radio Mode** — Creates a seamless, ongoing playlist for a shared listening experience.
-- **Multi-Source Support** — Works with Spotify, YouTube, and other streaming sources for maximum flexibility.
 
 ---
 
@@ -34,21 +33,6 @@ Perfect for:
 - Study sessions with collaborative playlists.
 - Social channels where music is part of the shared experience.
 
----
-
-## Project Structure
-
-my_music_bot/
-
-├── muse.py # Main bot entry point
-
-├── cogs/ # Command modules
-
-├── utils/ # Utility functions
-
-├── .env # Secret keys
-
-├── requirements.txt # Dependencies
 
 ├── README.md # This file
 
