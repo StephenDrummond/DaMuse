@@ -1,7 +1,0 @@
-songs_played (with user)		Captures recency and who is influencing the playlist. Including the user helps model group dynamics.
-songs_genres				Useful, but may overlap with songs_played. Helps the model generalize to similar songs.
-time_of_day				Can capture listening habits and temporal patterns. More useful if user behavior varies by time.
-users_in_call				Critical for group recommendations; knowing who is present heavily influences song choice.
-users_song_preferences			Reflects personal tastes. Strong signal, especially when combined across users.
-users_genre_preferences			Slightly less granular than song preferences, but good for smoothing or cold-start users.
-users_artist_preferences		Similar to genre preferences; helpful for capturing known affinities.
