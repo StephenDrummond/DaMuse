@@ -1,0 +1,17 @@
+# Runtime dependencies
+discord.py==2.6.4
+PyNaCl==1.6.0
+python-dotenv==1.1.1
+asyncpg==0.30.0
+spotipy==2.25.1
+yt-dlp==2025.9.26
+redis==6.4.0
+pandas==2.3.3
+
+# Dev / test tooling
+pytest==8.4.2
+pytest-asyncio==1.2.0
+pytest-sugar==1.1.1
+flake8==7.3.0
+mypy==1.18.2
+black==25.9.0

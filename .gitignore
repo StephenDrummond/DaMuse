@@ -47,6 +47,9 @@ coverage.xml
 # mypy
 .mypy_cache/
 
+# ruff
+.ruff_cache/
+
 # PyCharm
 .idea/
 *.iml
@@ -74,4 +77,5 @@ Thumbs.db
 *.key
 *.env
 
-*.txt
+# Local-only notes
+CLAUDE.md

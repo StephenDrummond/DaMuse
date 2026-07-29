@@ -1,0 +1,8 @@
+ideas for db structure
+
+postgres can hold unstructured data. Can hold genre, artist, song prefs in storage with user to
+reduce search time.
+
+Make a BotState class and store it in Postgres for quicker storage search
+
+Create my own server and host the bot there

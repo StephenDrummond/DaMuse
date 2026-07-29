@@ -1,0 +1,79 @@
+Table users {
+  discord_id bigint [primary key]
+  username varchar
+}
+
+Table artists {
+  id integer [primary key]
+  name varchar [not null, unique]
+}
+
+Table genres {
+  id integer [primary key]
+  name varchar [not null, unique]
+}
+
+Table artist_genres {
+  artist_id integer [not null]
+  genre_id integer [not null]
+  indexes {
+    (artist_id, genre_id) [pk]
+  }
+}
+
+Table songs {
+  id integer [primary key]
+  title varchar [not null]
+  artist_id integer [not null]
+
+  indexes {
+    (title, artist_id) [unique]
+  }
+}
+
+Table song_user_likes {
+  user_id bigint [not null]
+  song_id integer [not null]
+  liked boolean [default: true]
+  liked_at timestamp [default: 'CURRENT_TIMESTAMP']
+  preference_score float [default: 0.5, not null, note: "Must be between 0.0 and 1.0"]
+
+  indexes {
+    (user_id, song_id) [pk]
+  }
+}
+
+Table genre_user_likes {
+  user_id bigint [not null]
+  genre_id integer [not null]
+  liked boolean [default: true]
+  liked_at timestamp [default: 'CURRENT_TIMESTAMP']
+  preference_score float [default: 0.5, not null, note: "Must be between 0.0 and 1.0"]
+
+  indexes {
+    (user_id, genre_id) [pk]
+  }
+}
+
+Table artist_user_likes {
+  user_id bigint [not null]
+  artist_id integer [not null]
+  liked boolean [default: true]
+  liked_at timestamp [default: 'CURRENT_TIMESTAMP']
+  preference_score float [default: 0.5, not null, note: "Must be between 0.0 and 1.0"]
+
+  indexes {
+    (user_id, artist_id) [pk]
+  }
+}
+
+// Relationships
+Ref user_song_user: song_user_likes.user_id > users.discord_id
+Ref user_song_song: song_user_likes.song_id > songs.id
+Ref song_artist: songs.artist_id > artists.id
+Ref user_genre_user: genre_user_likes.user_id > users.discord_id
+Ref user_genre_genre: genre_user_likes.genre_id > genres.id
+Ref user_artist_user: artist_user_likes.user_id > users.discord_id
+Ref user_artist_artist: artist_user_likes.artist_id > artists.id
+Ref artist_genre_artist: artist_genres.artist_id > artists.id
+Ref artist_genre_genre: artist_genres.genre_id > genres.id
