@@ -1,21 +1,15 @@
 import asyncio
 import logging
-import os
 from dataclasses import dataclass
 from typing import Any, Optional
 from urllib.parse import quote, unquote
 
 import boto3
 from botocore.exceptions import ClientError
-from dotenv import load_dotenv
 
-load_dotenv()
+from config import AudioSettings
 
 logger = logging.getLogger(__name__)
-
-AUDIO_BUCKET = os.getenv("AUDIO_BUCKET")
-AUDIO_PREFIX = os.getenv("AUDIO_PREFIX", "audio/")
-AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
 # Signed playback URLs only need to outlive one song (ffmpeg reconnects use
 # the same URL), but leave headroom for long tracks.
 PRESIGNED_URL_TTL_SECONDS = 6 * 60 * 60
@@ -46,19 +40,22 @@ class AudioStore:
     needs s3:PutObject.
     """
 
-    def __init__(self, bucket: str, prefix: str = "audio/", client: Any = None):
+    def __init__(self, bucket: str, prefix: str, client: Any):
         self.bucket = bucket
         self.prefix = prefix
-        self.client = client or boto3.client("s3", region_name=AWS_REGION)
+        self.client = client
 
     @classmethod
-    def from_env(cls) -> Optional["AudioStore"]:
+    def from_settings(
+        cls, settings: AudioSettings, region: str
+    ) -> Optional["AudioStore"]:
         """The configured store, or None (caching disabled, stream-only) when
-        AUDIO_BUCKET isn't set."""
-        if not AUDIO_BUCKET:
+        no bucket is set."""
+        if not settings.bucket:
             logger.warning("AUDIO_BUCKET not set; audio caching disabled")
             return None
-        return cls(AUDIO_BUCKET, AUDIO_PREFIX)
+        client = boto3.client("s3", region_name=region)
+        return cls(settings.bucket, settings.prefix, client)
 
     def object_key(self, audio_key: str) -> str:
         return f"{self.prefix}{audio_key}.opus"

@@ -13,6 +13,24 @@ jobs:
       matrix:
         python-version: [3.13.0]
 
+    # Real Postgres for tests/integration (the matching Aurora major version).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: damuse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/damuse_test
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -34,11 +52,8 @@ jobs:
           pip install -r requirements.txt
           pip install pytest-cov
 
-      - name: Set environment variables
-        run: |
-          echo "SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }}" >> $GITHUB_ENV
-          echo "SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }}" >> $GITHUB_ENV
-
+      # Unit + integration tests; no API credentials needed (clients are
+      # injected and faked).
       - name: Run tests with coverage
         run: python -m pytest --cov=. tests/ -v
 

@@ -1,5 +1,6 @@
 import asyncio
 
+from config import Settings
 from db.db import Database
 
 # Each night, every score not touched in the last day moves 5% of the way back
@@ -40,7 +41,7 @@ SELECT cron.schedule(
 
 async def main():
     """One-off: install/refresh the nightly decay job (requires pg_cron)."""
-    db = Database()  # same IAM-authenticated connection the bot uses
+    db = Database(Settings.from_env().database)  # same connection as the bot
     await db.init_pool()
     try:
         await db.execute(DECAY_FUNCTION)

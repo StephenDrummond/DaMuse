@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from api.spotify import search_track
+from api.spotify import SpotifyClient
 from utils.librarian import Librarian, TrackIds
 from .db_client import DBClient
 
@@ -31,9 +31,10 @@ class Profiler(DBClient):
     Postgres and folds each event into the preference scores, all in the same
     transaction. Postgres is the only store, so there's nothing to sync back."""
 
-    def __init__(self, db, librarian: Optional[Librarian] = None):
+    def __init__(self, db, spotify: SpotifyClient, librarian: Librarian):
         super().__init__(db)
-        self.librarian = librarian or Librarian(db)
+        self.spotify = spotify
+        self.librarian = librarian
 
     @staticmethod
     def lookup_key(title: str, artist: Optional[str]) -> str:
@@ -68,10 +69,10 @@ class Profiler(DBClient):
                 return None  # Spotify had no match recently; don't ask again yet
 
         try:
-            info = await search_track(title, artist)
+            info = await self.spotify.search_track(title, artist)
             if info is None and artist:
                 # the artist hint is often a channel name; retry on title alone
-                info = await search_track(title)
+                info = await self.spotify.search_track(title)
         except Exception:
             logger.exception("Spotify lookup failed for %r", key)
             return None  # transient: not cached, retried next play

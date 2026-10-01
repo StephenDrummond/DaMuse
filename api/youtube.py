@@ -1,7 +1,8 @@
 import asyncio
+import functools
 import re
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Executor, ProcessPoolExecutor
 from dataclasses import dataclass
 from typing import Dict, Any, Optional
 
@@ -20,14 +21,19 @@ ytdl_format_options: Dict[str, Any] = {
     },
 }
 
-# Initialize yt-dlp with the above options
-ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
-# Same, but searches return just ids/titles without resolving any streams:
-# enough to check the S3 audio cache, at a fraction of the cost.
-ytdl_flat = yt_dlp.YoutubeDL({**ytdl_format_options, "extract_flat": "in_playlist"})
 
-# yt_dlp extraction is blocking and CPU-heavy, so it runs in worker processes
-executor = ProcessPoolExecutor()
+@functools.cache
+def _ytdl() -> Any:
+    """Per-process yt-dlp instance, created on first use (in each pool worker)."""
+    return yt_dlp.YoutubeDL(ytdl_format_options)
+
+
+@functools.cache
+def _ytdl_flat() -> Any:
+    """Like _ytdl, but searches return just ids/titles without resolving any
+    streams: enough to check the S3 audio cache, at a fraction of the cost."""
+    return yt_dlp.YoutubeDL({**ytdl_format_options, "extract_flat": "in_playlist"})
+
 
 # YouTube stream URLs expire after a few hours; anything resolved longer ago
 # than this is re-resolved from its page URL right before playing.
@@ -98,7 +104,7 @@ def is_url(text: str) -> bool:
 def run_ytdl(query: str) -> Optional[Dict[str, Any]]:
     """Runs in a worker process; returns only the fields we use so little
     has to be pickled back to the bot process."""
-    info = ytdl.extract_info(query, download=False)
+    info = _ytdl().extract_info(query, download=False)
     if info and "entries" in info:  # a search: take the first hit
         entries = [entry for entry in info["entries"] if entry]
         info = entries[0] if entries else None
@@ -109,7 +115,7 @@ def run_ytdl(query: str) -> Optional[Dict[str, Any]]:
 
 def run_ytdl_flat_search(query: str) -> Optional[Dict[str, Any]]:
     """Runs in a worker process: first search hit without stream resolution."""
-    info = ytdl_flat.extract_info(f"ytsearch1:{query}", download=False)
+    info = _ytdl_flat().extract_info(f"ytsearch1:{query}", download=False)
     entries = [entry for entry in (info or {}).get("entries", []) if entry]
     if not entries:
         return None
@@ -154,54 +160,67 @@ def parse_track_hint(
     return cleaned, None
 
 
-async def find(query: str) -> Optional[VideoRef]:
-    """Cheaply identify the video for a YouTube URL or a search term.
+class YouTubeClient:
+    """Finds and extracts YouTube (and other yt-dlp site) audio.
 
-    Returns None for URLs from other sites (they need a full `extract` to
-    learn their id) and for searches with no results.
+    yt-dlp extraction is blocking and CPU-heavy, so it runs on `executor`
+    (default: a process pool, created here rather than at import). Call
+    close() on shutdown.
     """
-    video_id = youtube_video_id(query)
-    if video_id is not None:
+
+    def __init__(self, executor: Optional[Executor] = None):
+        self.executor = executor or ProcessPoolExecutor()
+
+    def close(self) -> None:
+        self.executor.shutdown(wait=False, cancel_futures=True)
+
+    async def find(self, query: str) -> Optional[VideoRef]:
+        """Cheaply identify the video for a YouTube URL or a search term.
+
+        Returns None for URLs from other sites (they need a full `extract` to
+        learn their id) and for searches with no results.
+        """
+        video_id = youtube_video_id(query)
+        if video_id is not None:
+            return VideoRef(
+                audio_key=audio_key("youtube", video_id),
+                url=f"https://www.youtube.com/watch?v={video_id}",
+            )
+        if is_url(query):
+            return None
+
+        loop = asyncio.get_running_loop()
+        hit = await loop.run_in_executor(self.executor, run_ytdl_flat_search, query)
+        if not hit or not hit.get("id"):
+            return None
         return VideoRef(
-            audio_key=audio_key("youtube", video_id),
-            url=f"https://www.youtube.com/watch?v={video_id}",
+            audio_key=audio_key(
+                hit.get("extractor_key") or hit.get("ie_key") or "youtube", hit["id"]
+            ),
+            url=hit.get("url") or f"https://www.youtube.com/watch?v={hit['id']}",
+            title=hit.get("title"),
+            channel=hit.get("channel"),
         )
-    if is_url(query):
-        return None
 
-    loop = asyncio.get_running_loop()
-    hit = await loop.run_in_executor(executor, run_ytdl_flat_search, query)
-    if not hit or not hit.get("id"):
-        return None
-    return VideoRef(
-        audio_key=audio_key(
-            hit.get("extractor_key") or hit.get("ie_key") or "youtube", hit["id"]
-        ),
-        url=hit.get("url") or f"https://www.youtube.com/watch?v={hit['id']}",
-        title=hit.get("title"),
-        channel=hit.get("channel"),
-    )
+    async def extract(self, query: str) -> Optional[VideoInfo]:
+        """Fully resolve a URL or search term, including a direct stream URL."""
+        loop = asyncio.get_running_loop()
+        info = await loop.run_in_executor(self.executor, run_ytdl, query)
+        if not info or not info.get("url") or not info.get("id"):
+            return None
 
-
-async def extract(query: str) -> Optional[VideoInfo]:
-    """Fully resolve a URL or search term, including a direct stream URL."""
-    loop = asyncio.get_running_loop()
-    info = await loop.run_in_executor(executor, run_ytdl, query)
-    if not info or not info.get("url") or not info.get("id"):
-        return None
-
-    artists = info.get("artists") or []
-    artist = artists[0] if artists else info.get("artist")
-    hint_title, hint_artist = parse_track_hint(
-        info.get("track") or info["title"], artist, info.get("channel")
-    )
-    return VideoInfo(
-        audio_key=audio_key(info.get("extractor_key") or "youtube", info["id"]),
-        url=info.get("webpage_url") or query,
-        title=info["title"],
-        stream_url=info["url"],
-        hint_title=hint_title,
-        hint_artist=hint_artist,
-        duration=info.get("duration"),
-        resolved_at=time.monotonic(),
-    )
+        artists = info.get("artists") or []
+        artist = artists[0] if artists else info.get("artist")
+        hint_title, hint_artist = parse_track_hint(
+            info.get("track") or info["title"], artist, info.get("channel")
+        )
+        return VideoInfo(
+            audio_key=audio_key(info.get("extractor_key") or "youtube", info["id"]),
+            url=info.get("webpage_url") or query,
+            title=info["title"],
+            stream_url=info["url"],
+            hint_title=hint_title,
+            hint_artist=hint_artist,
+            duration=info.get("duration"),
+            resolved_at=time.monotonic(),
+        )

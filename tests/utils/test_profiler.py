@@ -17,8 +17,13 @@ def librarian():
 
 
 @pytest.fixture
-def profiler(db, librarian):
-    return Profiler(db, librarian=librarian)
+def spotify():
+    return AsyncMock()
+
+
+@pytest.fixture
+def profiler(db, spotify, librarian):
+    return Profiler(db, spotify, librarian)
 
 
 SPOTIFY_INFO = {"name": "Money", "artists": ["Pink Floyd"], "genres": ["rock"]}
@@ -33,50 +38,52 @@ def test_lookup_key_normalizes():
 
 
 @pytest.mark.asyncio
-async def test_resolve_track_cache_hit_skips_spotify(profiler, db):
+async def test_resolve_track_cache_hit_skips_spotify(spotify, profiler, db):
     db.fetch_row.return_value = {
         "song_id": 10,
         "artist_id": 20,
         "genre_ids": [30, 31],
         "fresh": True,
     }
-    with patch("utils.profiler.search_track", new_callable=AsyncMock) as search:
+    with patch.object(spotify, "search_track", new_callable=AsyncMock) as search:
         assert await profiler.resolve_track("Money", "Pink Floyd") == TRACK
         search.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_resolve_track_recent_miss_skips_spotify(profiler, db):
+async def test_resolve_track_recent_miss_skips_spotify(spotify, profiler, db):
     db.fetch_row.return_value = {
         "song_id": None,
         "artist_id": None,
         "genre_ids": [],
         "fresh": True,
     }
-    with patch("utils.profiler.search_track", new_callable=AsyncMock) as search:
+    with patch.object(spotify, "search_track", new_callable=AsyncMock) as search:
         assert await profiler.resolve_track("Nope", None) is None
         search.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_resolve_track_stale_miss_retries_spotify(profiler, db, librarian):
+async def test_resolve_track_stale_miss_retries_spotify(
+    spotify, profiler, db, librarian
+):
     db.fetch_row.return_value = {
         "song_id": None,
         "artist_id": None,
         "genre_ids": [],
         "fresh": False,
     }
-    with patch(
-        "utils.profiler.search_track", new_callable=AsyncMock, return_value=SPOTIFY_INFO
+    with patch.object(
+        spotify, "search_track", new_callable=AsyncMock, return_value=SPOTIFY_INFO
     ):
         assert await profiler.resolve_track("Money", None) == TRACK
 
 
 @pytest.mark.asyncio
-async def test_resolve_track_registers_and_caches(profiler, db, librarian):
+async def test_resolve_track_registers_and_caches(spotify, profiler, db, librarian):
     db.fetch_row.return_value = None
-    with patch(
-        "utils.profiler.search_track", new_callable=AsyncMock, return_value=SPOTIFY_INFO
+    with patch.object(
+        spotify, "search_track", new_callable=AsyncMock, return_value=SPOTIFY_INFO
     ) as search:
         assert await profiler.resolve_track("Money", "Pink Floyd") == TRACK
 
@@ -88,10 +95,11 @@ async def test_resolve_track_registers_and_caches(profiler, db, librarian):
 
 
 @pytest.mark.asyncio
-async def test_resolve_track_retries_without_artist(profiler, db):
+async def test_resolve_track_retries_without_artist(spotify, profiler, db):
     db.fetch_row.return_value = None
-    with patch(
-        "utils.profiler.search_track",
+    with patch.object(
+        spotify,
+        "search_track",
         new_callable=AsyncMock,
         side_effect=[None, SPOTIFY_INFO],
     ) as search:
@@ -101,10 +109,10 @@ async def test_resolve_track_retries_without_artist(profiler, db):
 
 
 @pytest.mark.asyncio
-async def test_resolve_track_caches_miss(profiler, db, librarian):
+async def test_resolve_track_caches_miss(spotify, profiler, db, librarian):
     db.fetch_row.return_value = None
-    with patch(
-        "utils.profiler.search_track", new_callable=AsyncMock, return_value=None
+    with patch.object(
+        spotify, "search_track", new_callable=AsyncMock, return_value=None
     ):
         assert await profiler.resolve_track("Nope", None) is None
 
@@ -113,10 +121,11 @@ async def test_resolve_track_caches_miss(profiler, db, librarian):
 
 
 @pytest.mark.asyncio
-async def test_resolve_track_spotify_error_not_cached(profiler, db):
+async def test_resolve_track_spotify_error_not_cached(spotify, profiler, db):
     db.fetch_row.return_value = None
-    with patch(
-        "utils.profiler.search_track",
+    with patch.object(
+        spotify,
+        "search_track",
         new_callable=AsyncMock,
         side_effect=RuntimeError("rate limited"),
     ):

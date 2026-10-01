@@ -2,14 +2,14 @@ from discord.ext import commands
 
 
 class General(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.db = bot.db
 
     @commands.command()
-    async def hello(self, ctx):
-        await ctx.send(f"Hello {ctx.author}! You are a member of {ctx.guild.name}")
+    async def hello(self, ctx: commands.Context) -> None:
+        guild_name = ctx.guild.name if ctx.guild else "no server"
+        await ctx.send(f"Hello {ctx.author}! You are a member of {guild_name}")
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(General(bot))

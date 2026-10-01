@@ -1,9 +1,16 @@
-from unittest.mock import AsyncMock, patch
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from api import youtube
-from api.youtube import audio_key, is_url, parse_track_hint, youtube_video_id
+from api.youtube import (
+    YouTubeClient,
+    audio_key,
+    is_url,
+    parse_track_hint,
+    youtube_video_id,
+)
 
 
 @pytest.mark.parametrize(
@@ -56,10 +63,18 @@ def test_audio_key_and_is_url():
     assert not is_url("artist - title")
 
 
+@pytest.fixture
+def client():
+    """A YouTubeClient on a thread pool; tests patch the extraction functions."""
+    client = YouTubeClient(ThreadPoolExecutor(max_workers=1))
+    yield client
+    client.close()
+
+
 @pytest.mark.asyncio
 async def test_find_youtube_url_needs_no_extraction():
-    with patch.object(youtube, "executor") as executor:
-        ref = await youtube.find("https://youtu.be/dQw4w9WgXcQ")
+    executor = MagicMock()
+    ref = await YouTubeClient(executor).find("https://youtu.be/dQw4w9WgXcQ")
 
     executor.submit.assert_not_called()
     assert ref is not None
@@ -68,28 +83,30 @@ async def test_find_youtube_url_needs_no_extraction():
 
 
 @pytest.mark.asyncio
-async def test_find_other_url_returns_none():
-    assert await youtube.find("https://soundcloud.com/a/b") is None
+async def test_find_other_url_returns_none(client):
+    assert await client.find("https://soundcloud.com/a/b") is None
 
 
 @pytest.mark.asyncio
-async def test_find_search_uses_flat_hit():
+async def test_find_search_uses_flat_hit(client):
     hit = {"id": "abc", "ie_key": "Youtube", "title": "T", "url": "u", "channel": "C"}
-    loop_run = AsyncMock(return_value=hit)
-    with patch("asyncio.get_running_loop") as get_loop:
-        get_loop.return_value.run_in_executor = loop_run
-        ref = await youtube.find("some song")
+    with patch.object(youtube, "run_ytdl_flat_search", return_value=hit) as search:
+        ref = await client.find("some song")
 
-    loop_run.assert_awaited_once()
-    assert loop_run.await_args is not None
-    assert loop_run.await_args.args[1] is youtube.run_ytdl_flat_search
+    search.assert_called_once_with("some song")
     assert ref == youtube.VideoRef(
         audio_key="youtube/abc", url="u", title="T", channel="C"
     )
 
 
 @pytest.mark.asyncio
-async def test_extract_builds_video_info():
+async def test_find_search_without_results(client):
+    with patch.object(youtube, "run_ytdl_flat_search", return_value=None):
+        assert await client.find("zzz") is None
+
+
+@pytest.mark.asyncio
+async def test_extract_builds_video_info(client):
     info = {
         "id": "abc",
         "extractor_key": "Youtube",
@@ -98,9 +115,8 @@ async def test_extract_builds_video_info():
         "webpage_url": "page",
         "duration": 382,
     }
-    with patch("asyncio.get_running_loop") as get_loop:
-        get_loop.return_value.run_in_executor = AsyncMock(return_value=info)
-        video = await youtube.extract("q")
+    with patch.object(youtube, "run_ytdl", return_value=info):
+        video = await client.extract("q")
 
     assert video is not None
     assert (video.audio_key, video.url, video.stream_url) == (
@@ -110,3 +126,9 @@ async def test_extract_builds_video_info():
     )
     assert (video.hint_title, video.hint_artist) == ("Money", "Pink Floyd")
     assert not video.is_stale
+
+
+def test_importing_creates_no_ytdl_instances():
+    # yt-dlp instances are created lazily, per process, on first use
+    assert youtube._ytdl.cache_info().currsize == 0
+    assert youtube._ytdl_flat.cache_info().currsize == 0

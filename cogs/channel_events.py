@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 
+from app import DaMuseBot
 from utils.librarian import Librarian
 
 
@@ -13,10 +14,9 @@ class ChannelEvents(commands.Cog):
     state cache (`channel.members`) is the source of truth, read on demand.
     """
 
-    def __init__(self, bot: commands.Bot) -> None:
-        self.bot: commands.Bot = bot
-        self.db = bot.db  # type: ignore
-        self.librarian: Librarian = Librarian(self.db)
+    def __init__(self, bot: DaMuseBot) -> None:
+        self.bot = bot
+        self.librarian: Librarian = bot.services.librarian
         # members already upserted by this process; skips a query per voice join
         self._registered: set[int] = set()
 
@@ -60,7 +60,7 @@ class ChannelEvents(commands.Cog):
             self._registered.add(member.id)
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: DaMuseBot) -> None:
     """
     Adds the ChannelEvents cog to the bot.
 

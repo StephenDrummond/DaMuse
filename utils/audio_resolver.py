@@ -2,10 +2,9 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from api import youtube
 from api.audio_store import AudioStore, CachedAudio
-from api.spotify import get_track_title_artist, spotify_track_id
-from api.youtube import VideoInfo
+from api.spotify import SpotifyClient, spotify_track_id
+from api.youtube import VideoInfo, YouTubeClient, is_url
 from utils.audio_jobs import AudioJobs
 
 logger = logging.getLogger(__name__)
@@ -40,9 +39,17 @@ class AudioResolver:
     AudioStore configured, everything streams.
     """
 
-    def __init__(self, store: Optional[AudioStore], jobs: AudioJobs):
+    def __init__(
+        self,
+        store: Optional[AudioStore],
+        jobs: AudioJobs,
+        youtube: YouTubeClient,
+        spotify: SpotifyClient,
+    ):
         self.store = store
         self.jobs = jobs
+        self.youtube = youtube
+        self.spotify = spotify
 
     async def resolve(
         self, query: str, requested_by: Optional[int], hint: Optional[Hint] = None
@@ -50,22 +57,22 @@ class AudioResolver:
         """Resolve a search term, YouTube/other URL, or Spotify track link."""
         spotify_id = spotify_track_id(query)
         if spotify_id is not None:
-            found = await get_track_title_artist(spotify_id)
+            found = await self.spotify.get_track_title_artist(spotify_id)
             if found is None:
                 return None
             title, artist = found
             query = f"{artist} - {title}"
             hint = hint or (title, artist)
 
-        ref = await youtube.find(query)
+        ref = await self.youtube.find(query)
         if ref is not None:
             cached = await self._lookup(ref.audio_key)
             if cached is not None:
                 return self._from_cache(ref.audio_key, cached, requested_by, hint)
-            info = await youtube.extract(ref.url)
-        elif youtube.is_url(query):
+            info = await self.youtube.extract(ref.url)
+        elif is_url(query):
             # another site: only a full extraction reveals its id / cache key
-            info = await youtube.extract(query)
+            info = await self.youtube.extract(query)
             if info is not None:
                 cached = await self._lookup(info.audio_key)
                 if cached is not None:
@@ -99,7 +106,7 @@ class AudioResolver:
 
         stream = track.stream
         if stream is None or stream.is_stale:
-            stream = await youtube.extract(track.source_url)
+            stream = await self.youtube.extract(track.source_url)
             if stream is None:
                 raise LookupError(f"Couldn't re-resolve {track.source_url}")
         return Playable(stream.stream_url, from_cache=False)
