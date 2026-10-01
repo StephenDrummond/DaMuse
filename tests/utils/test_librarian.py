@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from utils.librarian import Librarian
+from utils.librarian import Librarian, TrackIds
 
 
 @pytest.fixture
@@ -53,110 +53,75 @@ async def test_db_insert_failure(librarian):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "artist_name",
-    ["The Beatles", "Björk", "A" * 255, ""],  # normal, special chars, long, empty
-)
-async def test_add_artist_valid(librarian, artist_name):
-    librarian.insert_if_not_exists = AsyncMock()
-    await librarian.add_artist_to_db(artist_name)
-    librarian.insert_if_not_exists.assert_awaited_once_with(
-        "artists", ["name"], artist_name
-    )
+async def test_add_members_batches_in_one_call(librarian, mock_db):
+    await librarian.add_members_to_db([(1, "a"), (2, "b")])
+
+    mock_db.batch_insert.assert_awaited_once()
+    assert mock_db.batch_insert.await_args.args[1] == [(1, "a"), (2, "b")]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("invalid_input", [123, 12.5, None, [], {}, object()])
-async def test_add_artist_invalid_type(librarian, invalid_input):
+async def test_add_members_empty_is_noop(librarian, mock_db):
+    await librarian.add_members_to_db([])
+
+    mock_db.batch_insert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_register_track_returns_ids(db, conn):
+    conn.fetchval.side_effect = [7, 42]  # artist id, then song id
+    conn.fetch.return_value = [{"id": 3}, {"id": 4}]
+
+    ids = await Librarian(db).register_track("Money", "Pink Floyd", ["rock", "prog"])
+
+    assert ids == TrackIds(song_id=42, artist_id=7, genre_ids=[3, 4])
+    # genres linked to the artist
+    link_args = conn.execute.await_args.args
+    assert "artist_genres" in link_args[0]
+    assert link_args[1:] == (7, [3, 4])
+    # song keyed on (title, artist_id)
+    assert conn.fetchval.await_args_list[1].args[1:] == ("Money", 7)
+
+
+@pytest.mark.asyncio
+async def test_register_track_dedupes_genres(db, conn):
+    conn.fetchval.side_effect = [7, 42]
+    conn.fetch.return_value = [{"id": 3}]
+
+    await Librarian(db).register_track("Song", "Artist", ["rock", "rock"])
+
+    assert conn.fetch.await_args.args[1] == ["rock"]
+
+
+@pytest.mark.asyncio
+async def test_register_track_without_genres(db, conn):
+    conn.fetchval.side_effect = [7, 42]
+
+    ids = await Librarian(db).register_track("Song", "Artist", [])
+
+    assert ids.genre_ids == []
+    conn.fetch.assert_not_awaited()
+    conn.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("title, artist", [(None, "a"), ("t", None), (1, "a")])
+async def test_register_track_invalid_types(db, title, artist):
     with pytest.raises(TypeError):
-        await librarian.add_artist_to_db(invalid_input)
+        await Librarian(db).register_track(title, artist, [])
 
 
 @pytest.mark.asyncio
-async def test_add_artist_db_failure(librarian):
-    librarian.insert_if_not_exists = AsyncMock(side_effect=Exception("DB error"))
-    with pytest.raises(Exception) as exc_info:
-        await librarian.add_artist_to_db("Test Artist")
-    assert str(exc_info.value) == "DB error"
+async def test_get_track_ids(mock_db):
+    mock_db.fetch_row.return_value = {"song_id": 1, "artist_id": 2, "genre_ids": [5]}
+
+    ids = await Librarian(mock_db).get_track_ids(1)
+
+    assert ids == TrackIds(song_id=1, artist_id=2, genre_ids=[5])
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "title, artist_id",
-    [
-        ("Yesterday", 1),
-        ("Björk Song", 0),
-        ("A" * 255, 2**31),  # long title, large artist ID
-        ("", 5),  # empty string
-    ],
-)
-async def test_add_songs_valid(librarian, title, artist_id):
-    librarian.insert_if_not_exists = AsyncMock()
-    await librarian.add_songs_to_db(title, artist_id)
-    librarian.insert_if_not_exists.assert_awaited_once_with(
-        "songs",
-        ["title", "artist_id"],
-        title,
-        artist_id,
-        conflict_columns=["title", "artist_id"],
-    )
+async def test_get_track_ids_missing(mock_db):
+    mock_db.fetch_row.return_value = None
 
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "title, artist_id",
-    [
-        (123, 1),  # title not str
-        ("Song", "1"),  # artist_id not int
-        (None, 1),
-        ("Song", None),
-        ([], 1),
-        ("Song", []),
-    ],
-)
-async def test_add_songs_invalid_type(librarian, title, artist_id):
-    with pytest.raises(TypeError):
-        await librarian.add_songs_to_db(title, artist_id)
-
-
-@pytest.mark.asyncio
-async def test_add_songs_db_failure(librarian):
-    librarian.insert_if_not_exists = AsyncMock(side_effect=Exception("DB error"))
-    with pytest.raises(Exception) as exc_info:
-        await librarian.add_songs_to_db("Song Title", 1)
-    assert str(exc_info.value) == "DB error"
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "genre_name",
-    [
-        "Rock",
-        "Hip-Hop",
-        "A" * 255,
-        "",
-        "R&B",
-        "電子音楽",  # normal, special chars, long, empty, unicode
-    ],
-)
-async def test_add_genre_valid(librarian, genre_name):
-    librarian.insert_if_not_exists = AsyncMock()
-    await librarian.add_genre_to_db(genre_name)
-    librarian.insert_if_not_exists.assert_awaited_once_with(
-        "genres", ["name"], genre_name
-    )
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("invalid_input", [123, 12.5, None, [], {}, object()])
-async def test_add_genre_invalid_type(librarian, invalid_input):
-    with pytest.raises(TypeError):
-        await librarian.add_genre_to_db(invalid_input)
-
-
-@pytest.mark.asyncio
-async def test_add_genre_db_failure(librarian):
-    librarian.insert_if_not_exists = AsyncMock(side_effect=Exception("DB error"))
-    with pytest.raises(Exception) as exc_info:
-        await librarian.add_genre_to_db("Jazz")
-    assert str(exc_info.value) == "DB error"
+    assert await Librarian(mock_db).get_track_ids(1) is None

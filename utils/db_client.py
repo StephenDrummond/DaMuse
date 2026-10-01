@@ -1,9 +1,3 @@
-import asyncio
-
-import asyncpg
-from asyncpg import Record
-from datetime import datetime
-
 from db.db import Database  # type: ignore
 
 
@@ -15,6 +9,9 @@ class DBClient(object):
         "artist_user_likes": ("artists", "name", "artist_id"),
         "genre_user_likes": ("genres", "name", "genre_id"),
     }
+
+    # Neutral score: an item with no history for a user counts as this.
+    NEUTRAL_SCORE = 0.5
 
     def __init__(self, db):
         self.db: Database = db
@@ -37,138 +34,54 @@ class DBClient(object):
         """
         await self.db.execute(query, *values)
 
-    async def get_target_id(
-        self, table_name: str, lookup_column: str, value: str
-    ) -> int:
-        """Fetch the ID for a target value in a table."""
-        query = f"SELECT id FROM {table_name} WHERE {lookup_column} = $1"
-        target_id = await self.db.fetch_val(query, value)
-        if target_id is None:
-            raise ValueError(f"No ID found for {value} in {table_name}")
-        return target_id
-
-    async def upsert_all_preferences(
-        self, table: str, user: int, rows: dict[int, float]
-    ):
-        """Insert or update multiple records efficiently using executemany()."""
-        item_column = table.split("_", 1)[0] + "_id"
-        key_columns = ["user_id", item_column]
-        update_columns = ["preference_score", "liked_at"]
-
-        try:
-            # Convert dict into list of tuples for executemany
-            values = [
-                (user, item_id, pref_score, datetime.now())
-                for item_id, pref_score in rows.items()
-            ]
-
-            # Build query using first row just to get placeholders
-            query = self.build_upsert_query(
-                table, key_columns, update_columns, values[0]
-            )
-
-            await self.db.batch_insert(query, values)
-
-        except Exception as e:
-            print(f"Error bulk upserting {table} with {len(rows)} rows: {e}")
-
-    async def safe_upsert_preference(
-        self,
-        table: str,
-        key_columns: list[str],
-        update_columns: list[str],
-        *values,
-    ):
-        """Insert or update a record, catching and logging any DB error."""
-        try:
-            query = self.build_upsert_query(table, key_columns, update_columns, values)
-            await self.db.execute(query, *values)
-        except Exception as e:
-            print(f"Error upserting {table} with values {values}: {e}")
-
-    async def fetch_preferences(
-        self, discord_id: int, table: str
-    ) -> list[Record] | None:
-        query = self.build_pref_table_query(table)
-
-        try:
-            return await self.db.fetch(query, discord_id)
-        except asyncpg.PostgresError as e:
-            print(e)
-            return None
-
     @classmethod
-    def build_pref_table_query(cls, pref_table: str) -> str:
-        """Builds query for fetching a user’s preferences from given table name"""
-        type_table, label_column, id_column = cls.PREFERENCE_TABLE_MAPPING[pref_table]
-        type_word = pref_table.split("_", 1)[0]  # ex song_user_likes -> song
+    def build_score_update_query(cls, pref_table: str) -> str:
+        """Builds the write-through scoring upsert for one preference table.
 
-        query = f"""
-            (SELECT
-            tt.id AS {type_word}_id,
-            tt.{label_column} AS {type_word}_name,
-            pt.preference_score AS preference_score
-            FROM users u
-            JOIN {pref_table} pt ON u.discord_id = pt.user_id
-            JOIN {type_table} tt ON pt.{id_column} = tt.id
-            WHERE u.discord_id = ($1)
-            and pt.preference_score > 0.7
-            order by pt.preference_score desc
-            limit 200
-            )
-            union all
-            (SELECT
-            tt.id AS {type_word}_id,
-            tt.{label_column} AS {type_word}_name,
-            pt.preference_score AS preference_score
-            FROM users u
-            JOIN {pref_table} pt ON u.discord_id = pt.user_id
-            JOIN {type_table} tt ON pt.{id_column} = tt.id
-            WHERE u.discord_id = ($1)
-            and pt.preference_score < 0.3
-            order by pt.preference_score asc
-            limit 200
-            );"""
-        return query
+        Applied to every (user, item) pair in $1::bigint[] x $2::int[], it moves
+        each score toward a target ($4, 1.0 = liked, 0.0 = disliked) by a
+        learning rate ($3) -- an exponential moving average:
 
-    @staticmethod
-    def build_upsert_query(
-        table: str,
-        key_columns: list[str],
-        update_columns: list[str],
-        values: tuple[int, int, float],
-    ) -> str:
-        key_str = ", ".join(key_columns)
+            score <- score + rate * (target - score)
 
-        update_str = ", ".join(
-            f"{col} = "
-            + (
-                f"GREATEST(LEAST(EXCLUDED.{col}, 1.0), 0.0)"
-                if col == "preference_score"
-                else f"EXCLUDED.{col}"
-            )
-            for col in update_columns
-        )
-
-        placeholders = ", ".join(f"${i + 1}" for i in range(len(values)))
+        A pair with no row yet starts from NEUTRAL_SCORE. Both arrays must be
+        de-duplicated: Postgres rejects an upsert that touches a row twice.
+        """
+        _, _, id_column = cls.PREFERENCE_TABLE_MAPPING[pref_table]
+        neutral = cls.NEUTRAL_SCORE
 
         return f"""
-            INSERT INTO {table} ({", ".join(key_columns + update_columns)})
-            VALUES ({placeholders})
-            ON CONFLICT ({key_str}) DO UPDATE
-            SET {update_str};
+            INSERT INTO {pref_table} AS t
+                (user_id, {id_column}, preference_score, liked, liked_at)
+            SELECT u, i, {neutral} + $3::float8 * ($4::float8 - {neutral}),
+                   $4::float8 >= {neutral}, now()
+            FROM unnest($1::bigint[]) AS u
+            CROSS JOIN unnest($2::int[]) AS i
+            ON CONFLICT (user_id, {id_column}) DO UPDATE
+            SET preference_score = GREATEST(LEAST(
+                    t.preference_score
+                    + $3::float8 * ($4::float8 - t.preference_score),
+                    1.0), 0.0),
+                liked = EXCLUDED.liked,
+                liked_at = EXCLUDED.liked_at;
         """
 
+    @classmethod
+    def build_group_scores_query(cls, pref_table: str) -> str:
+        """Builds the query averaging one preference table across a group.
 
-async def main(
-    table="song_user_likes", user=283796442437517313, rows={1027: 0.9, 4965: 0.3}
-):
-    db = Database()
-    await db.init_pool()
-    dbc = DBClient(db)
+        $1::bigint[] are the members, $2 the group size. Members with no row for
+        an item count as NEUTRAL_SCORE, so one enthusiast in a big room moves
+        the average less than a whole room agreeing.
+        """
+        _, _, id_column = cls.PREFERENCE_TABLE_MAPPING[pref_table]
+        neutral = cls.NEUTRAL_SCORE
 
-    await dbc.upsert_all_preferences(table, user, rows)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+        return f"""
+            SELECT {id_column} AS item_id,
+                   (SUM(preference_score) + {neutral} * ($2::int - COUNT(*)))
+                       / $2::int AS score
+            FROM {pref_table}
+            WHERE user_id = ANY($1::bigint[])
+            GROUP BY {id_column};
+        """

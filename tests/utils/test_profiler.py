@@ -1,243 +1,217 @@
-from datetime import datetime
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from utils.profiler import Profiler, SongInfo
+from utils.librarian import TrackIds
+from utils.profiler import EVENT_SIGNALS, PlayRecord, Profiler
+
+TRACK = TrackIds(song_id=10, artist_id=20, genre_ids=[30, 31])
 
 
 @pytest.fixture
-def profiler():
-    db_mock = AsyncMock()
-    return Profiler(db=db_mock)
+def librarian():
+    librarian = AsyncMock()
+    librarian.register_track.return_value = TRACK
+    librarian.get_track_ids.return_value = TRACK
+    return librarian
+
+
+@pytest.fixture
+def profiler(db, librarian):
+    return Profiler(db, librarian=librarian)
+
+
+SPOTIFY_INFO = {"name": "Money", "artists": ["Pink Floyd"], "genres": ["rock"]}
+
+
+def test_lookup_key_normalizes():
+    assert Profiler.lookup_key(" Money ", "Pink Floyd") == "pink floyd|money"
+    assert Profiler.lookup_key("Money", None) == "|money"
+
+
+# --- resolve_track ---------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_log_event_skips_if_no_spotify_info(profiler):
-    """If get_spotify_info returns None, nothing else should run."""
-    member_mock = MagicMock()
-    with patch("utils.profiler.search_track", new_callable=AsyncMock) as mock_spotify:
-        mock_spotify.return_value = None
-        profiler._log_preference_group = AsyncMock()
-
-        await profiler.log_event(member_mock, "song_name", 0.5, True)
-        profiler._log_preference_group.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_log_event_calls_log_preference_group(profiler):
-    """Ensure _log_preference_group is called with correct SongInfo."""
-    member_mock = MagicMock()
-    fake_info = {
-        "name": "song_name",
-        "artists": ["artist_name"],
-        "genres": ["pop", "rock"],
+async def test_resolve_track_cache_hit_skips_spotify(profiler, db):
+    db.fetch_row.return_value = {
+        "song_id": 10,
+        "artist_id": 20,
+        "genre_ids": [30, 31],
+        "fresh": True,
     }
-    with patch("utils.profiler.search_track", new_callable=AsyncMock) as mock_spotify:
-        mock_spotify.return_value = fake_info
-        profiler._log_preference_group = AsyncMock()
-
-        await profiler.log_event(member_mock, "song_name", 0.8, False)
-
-        profiler._log_preference_group.assert_awaited_once()
-        args, kwargs = profiler._log_preference_group.call_args
-        assert args[0] == member_mock.id
-        assert isinstance(args[1], SongInfo)
-        assert args[1].name == "song_name"
-        assert args[1].artists == ["artist_name"]
-        assert args[1].genres == ["pop", "rock"]
-        assert args[2] == 0.8
-        assert args[3] is False
+    with patch("utils.profiler.search_track", new_callable=AsyncMock) as search:
+        assert await profiler.resolve_track("Money", "Pink Floyd") == TRACK
+        search.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_log_preference_group_logs_all_preferences(profiler):
-    """_log_preference_group should call log_preference for song, artist,
-    and each genre."""
-    song_info = SongInfo(name="song", artists=["artist"], genres=["pop", "rock"])
-    profiler.log_preference = AsyncMock()
-
-    await profiler._log_preference_group(1, song_info, 0.7, True)
-
-    # Should be called 4 times: 1 song + 1 artist + 2 genres
-    assert profiler.log_preference.await_count == 4
-    calls = [call.args[0] for call in profiler.log_preference.await_args_list]
-    assert "song_user_likes" in calls
-    assert "artist_user_likes" in calls
-    assert "genre_user_likes" in calls
+async def test_resolve_track_recent_miss_skips_spotify(profiler, db):
+    db.fetch_row.return_value = {
+        "song_id": None,
+        "artist_id": None,
+        "genre_ids": [],
+        "fresh": True,
+    }
+    with patch("utils.profiler.search_track", new_callable=AsyncMock) as search:
+        assert await profiler.resolve_track("Nope", None) is None
+        search.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_log_preference_handles_value_error(profiler):
-    """log_preference should catch ValueError from get_target_id."""
-    profiler.get_target_id = AsyncMock(side_effect=ValueError("Not found"))
-    profiler.safe_upsert_preference = AsyncMock()
-
-    with patch("utils.profiler.logger.warning") as mock_warning:
-        await profiler.log_preference("song_user_likes", "song", 1, 0.5, True)
-        profiler.safe_upsert_preference.assert_not_called()
-        # Check that the call argument is a ValueError instance with correct message
-        called_arg = mock_warning.call_args[0][0]
-        assert isinstance(called_arg, ValueError)
-        assert str(called_arg) == "Not found"
-
-
-@pytest.mark.asyncio
-async def test_log_preference_calls_safe_upsert_with_correct_args(profiler):
-    """log_preference should call safe_upsert_preference with the expected arguments."""
-    profiler.get_target_id = AsyncMock(return_value=42)
-    profiler.safe_upsert_preference = AsyncMock()
-
-    await profiler.log_preference("song_user_likes", "song", 1, 0.9, False)
-
-    profiler.safe_upsert_preference.assert_awaited_once()
-    args = profiler.safe_upsert_preference.await_args[0]
-    assert args[0] == "song_user_likes"  # table
-    assert args[1] == ["user_id", "song_id"]  # columns
-    assert args[2] == ["liked_at", "preference_score", "liked"]
-    assert args[3] == 1  # member_id
-    assert args[4] == 42  # target_id
-    assert isinstance(args[5], datetime)  # datetime.today() passed
-    assert args[6] == 0.9
-    assert args[7] is False
-
-
-@pytest.mark.asyncio
-async def test_log_preference_group_logs_song_and_artist(profiler):
-    song_info = SongInfo(name="Song A", artists=["Artist A"], genres=[])
-    profiler.log_preference = AsyncMock()
-
-    await profiler._log_preference_group(
-        member_id=1, song_info=song_info, alpha=0.5, liked=True
-    )
-
-    calls = profiler.log_preference.await_args_list
-    table_names = [call.args[0] for call in calls]
-
-    assert "song_user_likes" in table_names
-    assert "artist_user_likes" in table_names
-    assert "genre_user_likes" not in table_names
-
-
-@pytest.mark.asyncio
-async def test_log_preference_group_logs_genres(profiler):
-    song_info = SongInfo(name="Song B", artists=["Artist B"], genres=["Pop", "Rock"])
-    profiler.log_preference = AsyncMock()
-
-    await profiler._log_preference_group(
-        member_id=2, song_info=song_info, alpha=0.7, liked=False
-    )
-
-    calls = profiler.log_preference.await_args_list
-    genre_calls = [call for call in calls if call.args[0] == "genre_user_likes"]
-
-    assert len(genre_calls) == len(song_info.genres)
-    for call, genre in zip(genre_calls, song_info.genres):
-        assert call.args[1] == genre
-
-
-@pytest.mark.asyncio
-async def test_log_preference_group_handles_empty_genres(profiler):
-    song_info = SongInfo(name="Song C", artists=["Artist C"], genres=[])
-    profiler.log_preference = AsyncMock()
-
-    await profiler._log_preference_group(
-        member_id=3, song_info=song_info, alpha=0.3, liked=True
-    )
-
-    calls = profiler.log_preference.await_args_list
-    assert all(call.args[0] != "genre_user_likes" for call in calls)
-
-
-@pytest.mark.asyncio
-async def test_log_preference_group_uses_correct_alpha_and_liked(profiler):
-    song_info = SongInfo(name="Song D", artists=["Artist D"], genres=["Jazz"])
-    profiler.log_preference = AsyncMock()
-    alpha = 0.9
-    liked = False
-
-    await profiler._log_preference_group(
-        member_id=4, song_info=song_info, alpha=alpha, liked=liked
-    )
-
-    for call in profiler.log_preference.await_args_list:
-        assert call.args[3] == alpha
-        assert call.args[4] == liked
-
-
-@pytest.mark.asyncio
-async def test_log_preference_group_multiple_artists_only_logs_first(profiler):
-    song_info = SongInfo(name="Song E", artists=["Artist X", "Artist Y"], genres=[])
-    profiler.log_preference = AsyncMock()
-
-    await profiler._log_preference_group(
-        member_id=5, song_info=song_info, alpha=0.1, liked=True
-    )
-
-    artist_call = next(
-        call
-        for call in profiler.log_preference.await_args_list
-        if call.args[0] == "artist_user_likes"
-    )
-    assert artist_call.args[1] == "Artist X"
-
-
-@pytest.mark.asyncio
-async def test_log_preference_handles_value_error_gracefully(caplog):
-    db_mock = AsyncMock()
-    profiler = Profiler(db=db_mock)
-
-    # Patch the methods instead of assigning directly
-    with (
-        patch.object(
-            profiler, "get_target_id", new_callable=AsyncMock
-        ) as mock_get_target_id,
-        patch.object(
-            profiler, "safe_upsert_preference", new_callable=AsyncMock
-        ) as mock_safe_upsert,
+async def test_resolve_track_stale_miss_retries_spotify(profiler, db, librarian):
+    db.fetch_row.return_value = {
+        "song_id": None,
+        "artist_id": None,
+        "genre_ids": [],
+        "fresh": False,
+    }
+    with patch(
+        "utils.profiler.search_track", new_callable=AsyncMock, return_value=SPOTIFY_INFO
     ):
-        mock_get_target_id.side_effect = ValueError("Not found")
-
-        # Call the method
-        await profiler.log_preference("song_user_likes", "Missing Song", 1, 0.5, True)
-
-        # Ensure exception is logged but does not propagate
-        assert any("Not found" in record.message for record in caplog.records)
-        mock_safe_upsert.assert_not_awaited()
+        assert await profiler.resolve_track("Money", None) == TRACK
 
 
 @pytest.mark.asyncio
-async def test_log_preference_with_invalid_table_name_raises_key_error():
-    db_mock = AsyncMock()
-    profiler = Profiler(db=db_mock)
+async def test_resolve_track_registers_and_caches(profiler, db, librarian):
+    db.fetch_row.return_value = None
+    with patch(
+        "utils.profiler.search_track", new_callable=AsyncMock, return_value=SPOTIFY_INFO
+    ) as search:
+        assert await profiler.resolve_track("Money", "Pink Floyd") == TRACK
 
-    # Patch methods instead of assigning directly
-    with (
-        patch.object(profiler, "get_target_id", new_callable=AsyncMock),
-        patch.object(profiler, "safe_upsert_preference", new_callable=AsyncMock),
-    ):
-        # This should still raise KeyError for invalid table
-        with pytest.raises(KeyError):
-            await profiler.log_preference("invalid_table", "Item", 1, 0.5, True)
+    search.assert_awaited_once_with("Money", "Pink Floyd")
+    librarian.register_track.assert_awaited_once_with("Money", "Pink Floyd", ["rock"])
+    cache_args = db.execute.await_args.args
+    assert "track_lookups" in cache_args[0]
+    assert cache_args[1:] == ("pink floyd|money", 10)
 
 
 @pytest.mark.asyncio
-async def test_log_preference_accepts_empty_target_name():
-    db_mock = AsyncMock()
-    profiler = Profiler(db=db_mock)
+async def test_resolve_track_retries_without_artist(profiler, db):
+    db.fetch_row.return_value = None
+    with patch(
+        "utils.profiler.search_track",
+        new_callable=AsyncMock,
+        side_effect=[None, SPOTIFY_INFO],
+    ) as search:
+        assert await profiler.resolve_track("Money", "PinkFloydVEVO") == TRACK
 
-    # Patch methods instead of assigning directly
-    with (
-        patch.object(
-            profiler, "get_target_id", new_callable=AsyncMock
-        ) as mock_get_target_id,
-        patch.object(
-            profiler, "safe_upsert_preference", new_callable=AsyncMock
-        ) as mock_safe_upsert,
+    assert search.await_args_list[1].args == ("Money",)
+
+
+@pytest.mark.asyncio
+async def test_resolve_track_caches_miss(profiler, db, librarian):
+    db.fetch_row.return_value = None
+    with patch(
+        "utils.profiler.search_track", new_callable=AsyncMock, return_value=None
     ):
-        mock_get_target_id.return_value = 1
+        assert await profiler.resolve_track("Nope", None) is None
 
-        await profiler.log_preference("song_user_likes", "", 1, 0.0, False)
+    librarian.register_track.assert_not_awaited()
+    assert db.execute.await_args.args[1:] == ("|nope", None)
 
-        mock_get_target_id.assert_awaited_once_with("songs", "title", "")
-        mock_safe_upsert.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_resolve_track_spotify_error_not_cached(profiler, db):
+    db.fetch_row.return_value = None
+    with patch(
+        "utils.profiler.search_track",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("rate limited"),
+    ):
+        assert await profiler.resolve_track("Money", None) is None
+
+    db.execute.assert_not_awaited()
+
+
+# --- record_play -----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_record_play_inserts_play(profiler, conn):
+    profiler.resolve_track = AsyncMock(return_value=TRACK)
+    conn.fetchval.return_value = 99
+
+    play = await profiler.record_play(1, 2, "Money", "Pink Floyd", requested_by=5)
+
+    assert play == PlayRecord(play_id=99, track=TRACK)
+    assert conn.fetchval.await_args.args[1:] == (10, 1, 2, 5)
+    # requester made to exist before the FK insert
+    assert conn.execute.await_args.args[1] == [5]
+
+
+@pytest.mark.asyncio
+async def test_record_play_known_song_skips_lookup(profiler, librarian, conn):
+    profiler.resolve_track = AsyncMock()
+    conn.fetchval.return_value = 99
+
+    play = await profiler.record_play(1, 2, "t", None, requested_by=None, song_id=10)
+
+    assert play is not None
+    profiler.resolve_track.assert_not_awaited()
+    librarian.get_track_ids.assert_awaited_once_with(10)
+    conn.execute.assert_not_awaited()  # no requester to ensure
+
+
+@pytest.mark.asyncio
+async def test_record_play_unidentified_returns_none(profiler, db):
+    profiler.resolve_track = AsyncMock(return_value=None)
+
+    assert await profiler.record_play(1, 2, "t", None, requested_by=5) is None
+    db.transaction.assert_not_called()
+
+
+# --- log_event -------------------------------------------------------------
+
+PLAY = PlayRecord(
+    play_id=99, track=TrackIds(song_id=10, artist_id=20, genre_ids=[31, 30, 31])
+)
+
+
+@pytest.mark.asyncio
+async def test_log_event_writes_event_and_all_scores(profiler, conn):
+    await profiler.log_event(PLAY, [3, 1, 3], "like")
+
+    calls = conn.execute.await_args_list
+    ensure, event, song, artist, genre = calls
+    assert ensure.args[1] == [1, 3]  # users de-duped and sorted
+    assert event.args[1:] == (99, [1, 3], "like")
+    target, rate = EVENT_SIGNALS["like"]
+    assert "song_user_likes" in song.args[0]
+    assert song.args[1:] == ([1, 3], [10], rate, target)
+    assert "artist_user_likes" in artist.args[0]
+    assert artist.args[2] == [20]
+    assert "genre_user_likes" in genre.args[0]
+    assert genre.args[2] == [30, 31]  # genres de-duped and sorted
+
+
+@pytest.mark.asyncio
+async def test_log_event_skips_genres_when_none(profiler, conn):
+    play = PlayRecord(play_id=1, track=TrackIds(song_id=1, artist_id=2, genre_ids=[]))
+
+    await profiler.log_event(play, [1], "listen")
+
+    tables = [call.args[0] for call in conn.execute.await_args_list]
+    assert not any("genre_user_likes" in query for query in tables)
+
+
+@pytest.mark.asyncio
+async def test_log_event_no_users_is_noop(profiler, db):
+    await profiler.log_event(PLAY, [], "listen")
+
+    db.transaction.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_log_event_unknown_type_raises(profiler):
+    with pytest.raises(ValueError):
+        await profiler.log_event(PLAY, [1], "love")
+
+
+def test_event_signals_are_valid():
+    for target, rate in EVENT_SIGNALS.values():
+        assert target in (0.0, 1.0)
+        assert 0 < rate <= 1
+    # explicit feedback should move scores more than passive listening
+    assert EVENT_SIGNALS["like"][1] > EVENT_SIGNALS["listen"][1]

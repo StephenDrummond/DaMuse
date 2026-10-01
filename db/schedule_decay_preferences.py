@@ -1,87 +1,53 @@
 import asyncio
-import os
 
-import asyncpg
-from dotenv import load_dotenv
+from db.db import Database
 
-load_dotenv()
+# Each night, every score not touched in the last day moves 5% of the way back
+# toward neutral (0.5), i.e. score' = 0.5 + (score - 0.5) * e^-0.05. Because the
+# factor is constant per day, an untouched score's distance from neutral decays
+# as e^(-0.05 * days idle): a ~14-day half-life. Decaying toward 0.5 rather
+# than 0 means an old like fades to "no opinion", not into a dislike.
+DECAY_RATE = 0.05
 
-TOKEN = os.getenv("DISCORD_TOKEN")
-DB_NAME = os.getenv("DB_NAME")
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASS")
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT")
-
-
-async def run_sql_query(query, fetch=False):
-    try:
-        connection = await asyncpg.connect(
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            host=DB_HOST,
-            port=DB_PORT,
-        )
-        print("Database connection created")
-
-        if fetch:
-            rows = await connection.fetch(query)
-            await connection.close()
-            return rows
-        else:
-            await connection.execute(query)
-            await connection.close()
-
-    except Exception as e:
-        print(e)
-
-
-async def main():
-    # 1 — Create decay function
-    await run_sql_query(
-        """
+DECAY_FUNCTION = f"""
 CREATE OR REPLACE FUNCTION decay_preferences()
 RETURNS void AS $$
 BEGIN
     UPDATE song_user_likes
-    SET preference_score = preference_score * EXP(-0.05 * (CURRENT_DATE - liked_at::date))
-    WHERE liked_at < CURRENT_DATE;
+    SET preference_score = 0.5 + (preference_score - 0.5) * EXP(-{DECAY_RATE})
+    WHERE liked_at < now() - interval '1 day';
 
     UPDATE genre_user_likes
-    SET preference_score = preference_score * EXP(-0.05 * (CURRENT_DATE - liked_at::date))
-    WHERE liked_at < CURRENT_DATE;
+    SET preference_score = 0.5 + (preference_score - 0.5) * EXP(-{DECAY_RATE})
+    WHERE liked_at < now() - interval '1 day';
 
     UPDATE artist_user_likes
-    SET preference_score = preference_score * EXP(-0.05 * (CURRENT_DATE - liked_at::date))
-    WHERE liked_at < CURRENT_DATE;
+    SET preference_score = 0.5 + (preference_score - 0.5) * EXP(-{DECAY_RATE})
+    WHERE liked_at < now() - interval '1 day';
 END;
 $$ LANGUAGE plpgsql;
-    """,  # noqa: E501
-        fetch=False,
-    )
+"""
 
-    # 2 — Schedule with pg_cron (Every night at 4 AM decay_preferences() runs)
-    await run_sql_query(
-        """
+# pg_cron upserts by job name, so re-running this script just updates the job.
+SCHEDULE_JOB = """
 SELECT cron.schedule(
     'nightly_preference_decay',
     '0 4 * * *',
     $$SELECT decay_preferences();$$
 );
-    """,
-        fetch=False,
-    )
+"""
 
-    # 3 — List jobs to check that it worked
-    cron_jobs = await run_sql_query(
-        """
-SELECT * FROM cron.job;
-    """,
-        fetch=True,
-    )
 
-    print(cron_jobs)
+async def main():
+    """One-off: install/refresh the nightly decay job (requires pg_cron)."""
+    db = Database()  # same IAM-authenticated connection the bot uses
+    await db.init_pool()
+    try:
+        await db.execute(DECAY_FUNCTION)
+        await db.execute(SCHEDULE_JOB)
+        print(await db.fetch("SELECT jobid, jobname, schedule FROM cron.job;"))
+    finally:
+        await db.close()
 
 
 if __name__ == "__main__":

@@ -67,6 +67,50 @@ Table artist_user_likes {
   }
 }
 
+Table plays {
+  id bigint [primary key]
+  song_id integer [not null]
+  guild_id bigint [not null]
+  channel_id bigint [not null]
+  requested_by bigint [note: "NULL when the Curator picked the song"]
+  started_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (channel_id, started_at)
+    song_id
+  }
+}
+
+Table play_events {
+  id bigint [primary key]
+  play_id bigint [not null]
+  user_id bigint [not null]
+  event_type varchar [not null, note: "listen | skip | like | dislike"]
+  occurred_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    play_id
+    (user_id, occurred_at)
+  }
+}
+
+Table track_lookups {
+  query varchar [primary key]
+  song_id integer [note: "NULL records a Spotify miss"]
+  looked_up_at timestamptz [not null, default: `now()`]
+}
+
+Table audio_jobs {
+  audio_key varchar [primary key, note: "<extractor>/<id>; S3 key stem"]
+  source_url varchar [not null]
+  status varchar [not null, default: 'pending', note: "pending | running | done | failed"]
+  attempts integer [not null, default: 0]
+  last_error text
+  locked_until timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
 // Relationships
 Ref user_song_user: song_user_likes.user_id > users.discord_id
 Ref user_song_song: song_user_likes.song_id > songs.id
@@ -77,3 +121,8 @@ Ref user_artist_user: artist_user_likes.user_id > users.discord_id
 Ref user_artist_artist: artist_user_likes.artist_id > artists.id
 Ref artist_genre_artist: artist_genres.artist_id > artists.id
 Ref artist_genre_genre: artist_genres.genre_id > genres.id
+Ref play_song: plays.song_id > songs.id
+Ref play_requester: plays.requested_by > users.discord_id
+Ref play_event_play: play_events.play_id > plays.id
+Ref play_event_user: play_events.user_id > users.discord_id
+Ref track_lookup_song: track_lookups.song_id > songs.id
