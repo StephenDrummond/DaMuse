@@ -33,35 +33,33 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      # Installed before setup-python so its Poetry cache can find it
+      - name: Install Poetry
+        run: pipx install poetry
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      - name: Cache pip
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          cache: poetry
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest-cov
+          poetry check --lock
+          poetry install
 
       # Unit + integration tests; no API credentials needed (clients are
       # injected and faked).
       - name: Run tests with coverage
-        run: python -m pytest --cov=. tests/ -v
+        run: poetry run pytest --cov=. tests/ -v
 
       - name: Run mypy type checks
-        run: python -m mypy .
+        run: poetry run mypy .
 
       - name: Check formatting with black
-        run: black --check .
+        run: poetry run black --check .
 
       - name: Run flake8 linting
-        run: flake8 .
+        run: poetry run flake8 .

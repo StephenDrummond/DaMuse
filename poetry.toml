@@ -1,0 +1,3 @@
+[virtualenvs]
+# Use ./.venv (what PyCharm and Activate.ps1 already point at)
+in-project = true

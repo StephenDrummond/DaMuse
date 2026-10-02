@@ -99,6 +99,27 @@ provide full audio.
   preferences and every upsert that writes them derives from that one mapping, instead of three
   copies of near-identical SQL.
 
+## Running it
+
+Dependencies are managed with [Poetry](https://python-poetry.org/) (2.x). `poetry.toml`
+keeps the virtualenv in `./.venv`, so IDEs and `Activate.ps1` still find it.
+
+```powershell
+pipx install poetry          # once (or see Poetry's docs for other installers)
+poetry install               # runtime + dev dependencies, exactly as locked
+
+poetry run python main.py    # the bot (needs .env, Postgres, ffmpeg)
+poetry run python worker.py  # the S3 audio-cache worker (needs AUDIO_BUCKET)
+
+poetry run pytest            # integration tests also need TEST_DATABASE_URL
+poetry run mypy .
+poetry run black .
+poetry run flake8
+```
+
+Changing dependencies: `poetry add <pkg>` / `poetry add --group dev <pkg>`,
+`poetry update <pkg>` to upgrade within the ranges in `pyproject.toml`. Commit `poetry.lock`.
+
 ## Tech stack
 
 `discord.py` · `asyncpg` + Aurora PostgreSQL (IAM auth) · S3 (Ogg Opus audio cache) · Spotify
