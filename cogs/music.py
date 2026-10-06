@@ -7,25 +7,20 @@ from discord.ext import commands
 from app import DaMuseBot
 from music_state import inactivity
 from music_state.controller import PlaybackController
+from music_state.ogg_source import OggOpusSource
 from utils.audio_resolver import Playable
 
 logger = logging.getLogger(__name__)
 
-# Both sources are read over HTTP, so let ffmpeg ride out dropped connections
+# YouTube streams go through ffmpeg; let it ride out dropped connections
 RECONNECT_OPTIONS = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 
 
-async def audio_source(playable: Playable, ffmpeg_path: str) -> discord.FFmpegOpusAudio:
+async def audio_source(playable: Playable, ffmpeg_path: str) -> discord.AudioSource:
     if playable.from_cache:
-        # Already Ogg Opus at 48 kHz: codec="opus" makes ffmpeg pass the
-        # packets through untouched, so cached songs cost almost no CPU
-        return discord.FFmpegOpusAudio(
-            playable.url,
-            codec="opus",
-            executable=ffmpeg_path,
-            before_options=RECONNECT_OPTIONS,
-            options="-vn",
-        )
+        # Already Ogg Opus at 48 kHz: its packets go straight to Discord, so
+        # cached songs need no ffmpeg process at all
+        return OggOpusSource(playable.url)
     # Straight from YouTube: probe, then copy if Opus or encode if not.
     # discord.py's "native" probe only swaps in ffprobe when the executable is
     # literally "ffmpeg"; given a path (FFMPEG_PATH) it would run ffmpeg with

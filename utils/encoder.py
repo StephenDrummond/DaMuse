@@ -65,6 +65,10 @@ class Encoder:
                 "48000",
                 "-ac",
                 "2",
+                # Discord plays each packet as 20 ms; libopus's default, but
+                # the cache relies on it, so don't leave it implicit
+                "-frame_duration",
+                "20",
             ]
         )
         return [

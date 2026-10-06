@@ -5,6 +5,7 @@ from typing import Any, Optional
 from urllib.parse import quote, unquote
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from config import AudioSettings
@@ -54,8 +55,20 @@ class AudioStore:
         if not settings.bucket:
             logger.warning("AUDIO_BUCKET not set; audio caching disabled")
             return None
-        client = boto3.client("s3", region_name=region)
+        client = cls.make_client(region)
         return cls(settings.bucket, settings.prefix, client)
+
+    @staticmethod
+    def make_client(region: str) -> Any:
+        """An S3 client on the bucket's regional endpoint. With boto3's
+        default global endpoint (bucket.s3.amazonaws.com), presigned URLs for
+        buckets outside us-east-1 can fail with SignatureDoesNotMatch."""
+        return boto3.client(
+            "s3",
+            region_name=region,
+            endpoint_url=f"https://s3.{region}.amazonaws.com",
+            config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+        )
 
     def object_key(self, audio_key: str) -> str:
         return f"{self.prefix}{audio_key}.opus"

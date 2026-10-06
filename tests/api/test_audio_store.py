@@ -93,3 +93,15 @@ def test_upload_quotes_metadata_and_skips_none(store, client):
     extra = client.upload_file.call_args.kwargs["ExtraArgs"]
     assert extra["ContentType"] == "audio/ogg"
     assert extra["Metadata"] == {"title": "Bj%C3%B6rk", "duration": "235"}
+
+
+def test_client_uses_regional_endpoint(monkeypatch):
+    # signing is local; dummy credentials are enough
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "test")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test")
+    client = AudioStore.make_client("us-east-2")
+
+    url = client.generate_presigned_url(
+        "get_object", Params={"Bucket": "damuse-test", "Key": "k"}, ExpiresIn=60
+    )
+    assert url.startswith("https://damuse-test.s3.us-east-2.amazonaws.com/k?")
