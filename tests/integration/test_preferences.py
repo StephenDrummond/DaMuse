@@ -345,3 +345,21 @@ async def test_curator_never_picks_a_disliked_song(profiler, librarian, pg):
 @pytest.mark.asyncio
 async def test_curator_cold_start(pg):
     assert await Curator(pg).pick_next(10, [ALICE, BOB]) is None
+
+
+@pytest.mark.asyncio
+async def test_curator_excludes_songs_explicitly(profiler, pg):
+    play = await like(profiler, "Money", "Pink Floyd", [], [ALICE], channel=99)
+    curator = Curator(pg)
+
+    # the song "still playing" in channel 10 has no plays row there yet
+    assert await curator.pick_next(10, [ALICE], rng=random.Random(0)) is not None
+    assert (
+        await curator.pick_next(
+            10,
+            [ALICE],
+            rng=random.Random(0),
+            exclude_song_ids=[play.track.song_id],
+        )
+        is None
+    )

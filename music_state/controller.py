@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 MAX_START_ATTEMPTS = 3  # tracks to try before giving up when streams fail
 
 RateResult = Literal["ok", "nothing_playing", "unidentified"]
+Prepared = tuple[Track, Pick]  # a Curator pick, already resolved to a track
 
 
 class VoiceConnection(Protocol):
@@ -89,6 +90,9 @@ class PlaybackController:
         self.skipped = False  # current song ended via !skip
         self.stopping = False  # !stop: don't advance when the current song ends
         self.text_channel: Optional[Messageable] = None  # for announcements
+        # the room's next pick, prepared while the current song plays so the
+        # next one starts without a gap (see _prepare_upcoming)
+        self._upcoming: Optional["asyncio.Task[Optional[Prepared]]"] = None
 
         # serializes "start the next song" so concurrent !play / track-end
         # callbacks can't both start playback
@@ -109,6 +113,16 @@ class PlaybackController:
         # started another song while this one waited for the lock
         return any(queued is track for queued in self.queue)
 
+    async def curate(self) -> bool:
+        """Start playing (a queued request, else a pick for the room) if
+        nothing is playing. False if something already is: the Curator takes
+        over by itself when the queue runs out."""
+        self.stopping = False
+        if self.current is not None:
+            return False
+        await self.play_next()
+        return True
+
     def skip(self, user_id: int) -> bool:
         """Skip the current song (counts against it for `user_id`). False if
         nothing is playing or a skip is already underway."""
@@ -124,6 +138,7 @@ class PlaybackController:
     def stop(self) -> None:
         """Clear the queue and stop the current song without advancing."""
         self.queue.clear()
+        self._discard_upcoming()
         voice = self._voice()
         if voice is not None and self.current is not None:
             self.stopping = True
@@ -192,24 +207,74 @@ class PlaybackController:
                 # bind the track, so a late callback can't end a later song
                 voice.play(source, after=functools.partial(self._after_play, track))
 
+                self._prepare_upcoming(voice.channel)
+
                 suffix = " (picked for the room)" if pick else ""
                 await self.announce(f"Now playing: **{track.title}**{suffix}")
                 return
 
     async def _next_track(self, channel: Any) -> tuple[Optional[Track], Optional[Pick]]:
-        """Next requested song, or else the Curator's pick for the room."""
+        """Next requested song, else the pick prepared during the last song,
+        else a fresh pick for the room."""
         if self.queue:
             return self.queue.popleft(), None
 
-        pick = await self.curator.pick_next(channel.id, listener_ids(channel))
-        if pick is None:
-            return None, None
-        track = await self.resolver.resolve(
-            f"{pick.artist} - {pick.title}",
-            requested_by=None,
-            hint=(pick.title, pick.artist),
-        )
-        return (track, pick) if track else (None, None)
+        upcoming, self._upcoming = self._upcoming, None
+        if upcoming is not None:
+            prepared = await upcoming  # usually done already: no wait
+            if prepared is not None:
+                return prepared
+        # nothing was prepared, or it fell through: pick now
+        picked = await self._pick_for_room(channel)
+        return picked if picked is not None else (None, None)
+
+    def _prepare_upcoming(self, channel: Any) -> None:
+        """Start picking the song after this one in the background, unless
+        requests are queued (they play first) or a pick is already prepared
+        (it waits behind requests and stays valid)."""
+        if self.queue or self._upcoming is not None:
+            return
+        self._upcoming = self._spawn(self._pick_for_room(channel, self.current_play))
+
+    def _discard_upcoming(self) -> None:
+        if self._upcoming is not None:
+            self._upcoming.cancel()
+            self._upcoming = None
+
+    async def _pick_for_room(
+        self,
+        channel: Any,
+        playing: Optional["asyncio.Task[Optional[PlayRecord]]"] = None,
+    ) -> Optional[Prepared]:
+        """Ask the Curator for the room's next song and resolve it to a track.
+        `playing` is the song still playing, excluded explicitly because its
+        `plays` row (which the recent-plays check uses) may not exist yet.
+        Resolving here also queues an uncached pick for the S3 worker, so it
+        may already be cached by the time it plays."""
+        try:
+            exclude: list[int] = []
+            if playing is not None:
+                try:
+                    record = await playing
+                except Exception:
+                    record = None  # logged where the play is recorded
+                if record is not None:
+                    exclude.append(record.track.song_id)
+
+            pick = await self.curator.pick_next(
+                channel.id, listener_ids(channel), exclude_song_ids=exclude
+            )
+            if pick is None:
+                return None
+            track = await self.resolver.resolve(
+                f"{pick.artist} - {pick.title}",
+                requested_by=None,
+                hint=(pick.title, pick.artist),
+            )
+            return (track, pick) if track is not None else None
+        except Exception:
+            logger.exception("Couldn't pick a song for the room in %s", self.guild_id)
+            return None
 
     def _end_current(self, voice: VoiceConnection) -> None:
         if voice.is_playing():

@@ -76,14 +76,11 @@ class Music(commands.Cog):
     async def play(
         self, ctx: commands.Context, *, search: Optional[str] = None
     ) -> None:
-        """Play a song by search term, YouTube URL or Spotify track link."""
+        """Play a song by search term, YouTube URL or Spotify track link; with
+        nothing after it, play songs picked for everyone in the channel."""
         voice_state = getattr(ctx.author, "voice", None)
         if ctx.guild is None or voice_state is None or voice_state.channel is None:
             await ctx.send("You must be in a voice channel to play music!")
-            return
-
-        if not search:
-            await ctx.send("Please provide a song name or link.")
             return
 
         # Join or move to the user's voice channel
@@ -96,6 +93,17 @@ class Music(commands.Cog):
 
         controller = self._controller(ctx.guild)
         controller.text_channel = ctx.channel
+
+        if not search:
+            # typing indicator while the Curator picks and YouTube resolves
+            async with ctx.typing():
+                started = await controller.curate()
+            if not started:
+                await ctx.send(
+                    "Already playing. Once the queue runs out, "
+                    "I'll keep picking songs for the room."
+                )
+            return
 
         try:
             track = await self.services.resolver.resolve(

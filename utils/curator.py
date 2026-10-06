@@ -10,7 +10,7 @@ WEIGHTS: dict[str, float] = {"song": 0.5, "artist": 0.3, "genre": 0.2}
 SEED_LIMIT = 50  # top liked songs/artists/genres used to find candidates
 CANDIDATE_LIMIT = 500
 TOP_K = 10  # pick randomly (weighted) among this many best candidates
-RECENT_MINUTES = 120  # don't repeat a song played in the channel this recently
+RECENT_MINUTES = 5  # don't repeat a song played in the channel this recently
 DISLIKE_THRESHOLD = 0.35  # never pick a song the group scores below this
 
 KINDS: dict[str, str] = {
@@ -56,10 +56,14 @@ class Curator(DBClient):
         return dict(zip(KINDS, results))
 
     async def candidates(
-        self, channel_id: int, scores: dict[str, dict[int, float]]
+        self,
+        channel_id: int,
+        scores: dict[str, dict[int, float]],
+        exclude_song_ids: Optional[list[int]] = None,
     ) -> list[Candidate]:
-        """Songs connected to anything the group likes, minus recent plays.
-        Direct song matches rank first, then artist matches, then genre."""
+        """Songs connected to anything the group likes, minus recent plays and
+        `exclude_song_ids`. Direct song matches rank first, then artist
+        matches, then genre."""
         seeds = {kind: self.top_liked(scores[kind]) for kind in KINDS}
         rows = await self.db.fetch(
             """
@@ -76,6 +80,7 @@ class Curator(DBClient):
                   SELECT 1 FROM plays p
                   WHERE p.channel_id = $4 AND p.song_id = s.id
                     AND p.started_at > now() - make_interval(mins => $5))
+              AND NOT (s.id = ANY($7::int[]))
             ORDER BY s.id = ANY($1::int[]) DESC, s.artist_id = ANY($2::int[]) DESC
             LIMIT $6
             """,
@@ -85,6 +90,7 @@ class Curator(DBClient):
             channel_id,
             RECENT_MINUTES,
             CANDIDATE_LIMIT,
+            exclude_song_ids or [],
         )
         return [
             Candidate(
@@ -102,15 +108,19 @@ class Curator(DBClient):
         channel_id: int,
         member_ids: list[int],
         rng: Optional[random.Random] = None,
+        exclude_song_ids: Optional[list[int]] = None,
     ) -> Optional[Pick]:
         """Choose the next song for the room, or None if there isn't enough
-        history yet (cold start) to pick anything the room likes."""
+        history yet (cold start) to pick anything the room likes.
+
+        `exclude_song_ids` covers songs the recent-plays check can't see yet,
+        e.g. the one playing right now while the next pick is prepared."""
         if not member_ids:
             return None
         scores = await self.group_scores(member_ids)
         if not any(scores.values()):
             return None
-        candidates = await self.candidates(channel_id, scores)
+        candidates = await self.candidates(channel_id, scores, exclude_song_ids)
         return self.choose(candidates, scores, rng or random.Random())
 
     @classmethod

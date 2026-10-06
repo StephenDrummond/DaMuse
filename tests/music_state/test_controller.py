@@ -272,10 +272,14 @@ async def test_empty_queue_uses_curator_pick(
     await controller.play_next()
     await controller.settle()
 
-    curator.pick_next.assert_awaited_once_with(CHANNEL_ID, [ALICE, BOB])
-    resolver.resolve.assert_awaited_once_with(
-        "Pink Floyd - Money", requested_by=None, hint=("Money", "Pink Floyd")
-    )
+    first = curator.pick_next.await_args_list[0]
+    assert first.args == (CHANNEL_ID, [ALICE, BOB])
+    first_resolve = resolver.resolve.await_args_list[0]
+    assert first_resolve.args == ("Pink Floyd - Money",)
+    assert first_resolve.kwargs == {
+        "requested_by": None,
+        "hint": ("Money", "Pink Floyd"),
+    }
     assert voice.plays == ["https://cdn/Money"]
     assert profiler.record_play.await_args.kwargs == {"song_id": 7}
     assert sent(text_channel) == ["Now playing: **Money** (picked for the room)"]
@@ -395,3 +399,169 @@ async def test_rate_when_record_failed(controller, profiler):
     await controller.enqueue(track("a"))
 
     assert await controller.rate(BOB, "like") == "unidentified"
+
+
+@pytest.mark.asyncio
+async def test_curate_when_idle_plays_a_pick(
+    controller, voice, curator, resolver, text_channel
+):
+    curator.pick_next.return_value = Pick(
+        song_id=7, title="Money", artist="Pink Floyd", score=0.8
+    )
+    resolver.resolve.return_value = track("Money", requested_by=None)
+
+    assert await controller.curate() is True
+    await controller.settle()
+
+    assert voice.plays == ["https://cdn/Money"]
+    assert sent(text_channel) == ["Now playing: **Money** (picked for the room)"]
+
+
+@pytest.mark.asyncio
+async def test_curate_plays_queued_requests_first(controller, voice, curator):
+    controller.queue.append(track("requested"))
+
+    assert await controller.curate() is True
+
+    assert voice.plays == ["https://cdn/requested"]
+    curator.pick_next.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_curate_while_playing_does_nothing(controller, voice, curator):
+    await controller.enqueue(track("a"))
+
+    assert await controller.curate() is False
+
+    assert voice.plays == ["https://cdn/a"]
+    curator.pick_next.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_curate_with_no_history_announces_and_idles(
+    controller, voice, text_channel, hooks
+):
+    assert await controller.curate() is True  # it tried; nothing to pick
+
+    assert voice.plays == []
+    assert "Nothing left to play" in sent(text_channel)[0]
+    hooks.idle.assert_called_once_with(text_channel)
+
+
+@pytest.mark.asyncio
+async def test_curate_keeps_going_after_each_pick(controller, voice, curator, resolver):
+    picks = [
+        Pick(song_id=1, title="One", artist="A", score=0.8),
+        Pick(song_id=2, title="Two", artist="A", score=0.7),
+    ]
+    curator.pick_next.side_effect = picks + [None]
+    resolver.resolve.side_effect = [track("One", None), track("Two", None)]
+
+    await controller.curate()
+    voice.finish()
+    await controller.settle()
+
+    assert voice.plays == ["https://cdn/One", "https://cdn/Two"]
+
+
+# --- gapless: the next pick is prepared while a song plays --------------------
+
+
+def pick(song_id, title):
+    return Pick(song_id=song_id, title=title, artist="A", score=0.8)
+
+
+@pytest.mark.asyncio
+async def test_next_pick_is_prepared_while_song_plays(
+    controller, voice, curator, resolver, profiler
+):
+    profiler.record_play.return_value = play_record()  # song_id 1 is playing
+    curator.pick_next.side_effect = [pick(2, "next"), None]
+    resolver.resolve.return_value = track("next", requested_by=None)
+
+    await controller.enqueue(track("a"))
+    await controller.settle()
+
+    # picked and resolved before "a" ends, excluding the song playing now
+    assert curator.pick_next.await_count == 1
+    assert curator.pick_next.await_args.kwargs == {"exclude_song_ids": [1]}
+    resolver.resolve.assert_awaited_once()
+
+    voice.finish()
+    await controller.settle()
+
+    assert voice.plays == ["https://cdn/a", "https://cdn/next"]
+    # "next" came from the prepared pick, not a fresh one at the end of "a"
+    assert resolver.resolve.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_no_pick_prepared_while_requests_are_queued(controller, curator):
+    controller.queue.extend([track("a"), track("b")])
+    await controller.play_next()  # "a" starts with "b" still queued
+    await controller.settle()
+
+    curator.pick_next.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_requests_play_before_the_prepared_pick(
+    controller, voice, curator, resolver
+):
+    curator.pick_next.side_effect = [pick(2, "picked"), None]
+    resolver.resolve.return_value = track("picked", requested_by=None)
+    await controller.enqueue(track("a"))
+    await controller.settle()  # pick prepared
+
+    await controller.enqueue(track("request"))
+    voice.finish()
+    await controller.settle()
+    voice.finish()
+    await controller.settle()
+
+    assert voice.plays == [
+        "https://cdn/a",
+        "https://cdn/request",
+        "https://cdn/picked",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_stop_discards_the_prepared_pick(controller, voice, curator, resolver):
+    curator.pick_next.side_effect = [pick(2, "picked"), pick(3, "fresh"), None]
+    resolver.resolve.side_effect = lambda *a, **k: track(k["hint"][0], None)
+    await controller.enqueue(track("a"))
+    await controller.settle()
+
+    controller.stop()
+    await controller.settle()
+    await controller.curate()
+    await controller.settle()
+
+    # after !stop, playback restarts with a fresh pick, not the stale one
+    assert voice.plays == ["https://cdn/a", "https://cdn/fresh"]
+
+
+@pytest.mark.asyncio
+async def test_failed_preparation_falls_back_to_a_fresh_pick(
+    controller, voice, curator, resolver
+):
+    curator.pick_next.side_effect = [RuntimeError("db hiccup"), pick(2, "b"), None]
+    resolver.resolve.return_value = track("b", requested_by=None)
+    await controller.enqueue(track("a"))
+    await controller.settle()
+
+    voice.finish()
+    await controller.settle()
+
+    assert voice.plays == ["https://cdn/a", "https://cdn/b"]
+
+
+@pytest.mark.asyncio
+async def test_unidentified_song_is_not_excluded(controller, curator, profiler):
+    profiler.record_play.return_value = None  # not on Spotify: no song id
+
+    await controller.enqueue(track("a"))
+    await controller.settle()
+
+    assert curator.pick_next.await_args.kwargs == {"exclude_song_ids": []}

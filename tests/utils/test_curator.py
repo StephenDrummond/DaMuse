@@ -129,3 +129,13 @@ async def test_pick_next_end_to_end(db):
     candidate_args = db.fetch.await_args_list[3].args
     assert candidate_args[1] == [7]  # liked songs seed the candidates
     assert candidate_args[4] == 42  # recent plays excluded for this channel
+    assert candidate_args[7] == []  # nothing explicitly excluded
+
+
+@pytest.mark.asyncio
+async def test_pick_next_passes_exclusions_to_candidates(db):
+    db.fetch.side_effect = [[{"item_id": 7, "score": 0.9}], [], [], []]
+
+    await Curator(db).pick_next(42, [5], exclude_song_ids=[7])
+
+    assert db.fetch.await_args_list[3].args[7] == [7]
