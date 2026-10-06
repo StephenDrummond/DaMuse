@@ -24,6 +24,9 @@ class DatabaseSettings:
     # keep (processes x max size) under the cluster's connection limit
     pool_min_size: int = 3
     pool_max_size: int = 20
+    # seconds to wait for a new connection; Aurora Serverless v2 waking from a
+    # 0-ACU pause can take well over the old 15s
+    connect_timeout: int = 60
     # A plain connection string (local dev, tests). When set, it's used as-is
     # instead of IAM auth.
     dsn: Optional[str] = None
@@ -85,6 +88,7 @@ class Settings:
                 ssl_root_cert=get("DB_SSL_ROOT_CERT"),
                 pool_min_size=get_int("DB_POOL_MIN_SIZE", 3),
                 pool_max_size=get_int("DB_POOL_MAX_SIZE", 20),
+                connect_timeout=get_int("DB_CONNECT_TIMEOUT", 60),
                 dsn=get("DATABASE_URL"),
             ),
             audio=AudioSettings(

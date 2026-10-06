@@ -41,7 +41,7 @@ class Database:
         common = dict(
             min_size=settings.pool_min_size,
             max_size=settings.pool_max_size,
-            timeout=15,
+            timeout=settings.connect_timeout,
         )
         if settings.dsn:
             self.pool = await asyncpg.create_pool(settings.dsn, **common)

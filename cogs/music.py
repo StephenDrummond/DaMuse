@@ -26,9 +26,14 @@ async def audio_source(playable: Playable, ffmpeg_path: str) -> discord.FFmpegOp
             before_options=RECONNECT_OPTIONS,
             options="-vn",
         )
-    # Straight from YouTube: probe, then copy if Opus or encode if not
+    # Straight from YouTube: probe, then copy if Opus or encode if not.
+    # discord.py's "native" probe only swaps in ffprobe when the executable is
+    # literally "ffmpeg"; given a path (FFMPEG_PATH) it would run ffmpeg with
+    # ffprobe's options, fail, and log an error before falling back. So go
+    # straight to the fallback probe, which uses ffmpeg itself.
     return await discord.FFmpegOpusAudio.from_probe(
         playable.url,
+        method="native" if ffmpeg_path == "ffmpeg" else "fallback",
         executable=ffmpeg_path,
         before_options=RECONNECT_OPTIONS,
         options="-vn",

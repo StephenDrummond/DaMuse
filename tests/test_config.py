@@ -26,6 +26,7 @@ def test_reads_every_key():
             "DB_SSL_ROOT_CERT": "/certs/rds.pem",
             "DB_POOL_MIN_SIZE": "1",
             "DB_POOL_MAX_SIZE": "5",
+            "DB_CONNECT_TIMEOUT": "30",
             "DATABASE_URL": "postgresql://localhost/test",
             "AUDIO_BUCKET": "bucket",
             "AUDIO_PREFIX": "a/",
@@ -46,6 +47,7 @@ def test_reads_every_key():
         ssl_root_cert="/certs/rds.pem",
         pool_min_size=1,
         pool_max_size=5,
+        connect_timeout=30,
         dsn="postgresql://localhost/test",
     )
     assert settings.audio == AudioSettings(
