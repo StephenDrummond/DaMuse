@@ -17,6 +17,7 @@ from audio.audio_resolver import AudioResolver
 from taste.curator import Curator
 from taste.librarian import Librarian
 from taste.profiler import Profiler
+from taste.seeder import Seeder
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class Services:
     librarian: Librarian
     profiler: Profiler
     curator: Curator
+    seeder: Seeder
     resolver: AudioResolver
 
     @classmethod
@@ -54,6 +56,7 @@ class Services:
             librarian=librarian,
             profiler=Profiler(db, spotify, librarian),
             curator=Curator(db),
+            seeder=Seeder(db, spotify, librarian),
             resolver=AudioResolver(store, AudioJobs(db), youtube, spotify),
         )
 

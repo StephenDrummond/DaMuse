@@ -1,4 +1,5 @@
 import asyncio
+import sys
 
 from config import Settings
 from db.db import Database
@@ -39,14 +40,32 @@ SELECT cron.schedule(
 """
 
 
+PG_CRON_NOT_LOADED = """\
+The decay function is installed, but pg_cron isn't loaded, so it can't be scheduled.
+On RDS/Aurora:
+  1. Use a custom DB cluster parameter group (family matching your engine version).
+  2. Add pg_cron to shared_preload_libraries, keeping the existing entries.
+  3. Attach the group to the cluster and reboot the writer instance.
+  4. Run this script again; it creates the extension itself.
+shared_preload_libraries is currently: {libraries}"""
+
+
 async def main():
     """One-off: install/refresh the nightly decay job (requires pg_cron)."""
     db = Database(Settings.from_env().database)  # same connection as the bot
     await db.init_pool()
     try:
         await db.execute(DECAY_FUNCTION)
+
+        # pg_cron can only be created once the server preloads it at startup
+        libraries = await db.fetch_val("SHOW shared_preload_libraries") or ""
+        if "pg_cron" not in [lib.strip() for lib in libraries.split(",")]:
+            sys.exit(PG_CRON_NOT_LOADED.format(libraries=libraries))
+
+        await db.execute("CREATE EXTENSION IF NOT EXISTS pg_cron")
         await db.execute(SCHEDULE_JOB)
-        print(await db.fetch("SELECT jobid, jobname, schedule FROM cron.job;"))
+        for job in await db.fetch("SELECT jobid, jobname, schedule FROM cron.job"):
+            print(f"scheduled: #{job['jobid']} {job['jobname']} ({job['schedule']})")
     finally:
         await db.close()
 

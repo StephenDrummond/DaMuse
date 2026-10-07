@@ -9,6 +9,7 @@ from audio.audio_resolver import Playable, Track
 from taste.curator import Pick
 from taste.librarian import TrackIds
 from taste.profiler import PlayRecord
+from taste.seeder import SimilarArtist
 
 CHANNEL_ID = 10
 ALICE, BOB, BOT = 1, 2, 99
@@ -571,3 +572,121 @@ async def test_unidentified_song_is_not_excluded(controller, curator, profiler):
         "exclude_song_ids": [],
         "context_song_id": None,  # Curator falls back to the channel's last play
     }
+
+
+# --- !switch -----------------------------------------------------------------
+
+
+def switched(song_id, title, genre="house"):
+    return Pick(song_id=song_id, title=title, artist="A", score=0.8, genre=genre)
+
+
+@pytest.mark.asyncio
+async def test_switch_cuts_current_song_without_skip_or_listen(
+    controller, voice, curator, resolver, profiler, text_channel
+):
+    curator.pick_switch = AsyncMock(return_value=switched(9, "new"))
+    resolver.resolve.return_value = track("new", requested_by=None)
+    await controller.enqueue(track("a"))
+    await controller.settle()
+
+    pick = await controller.switch()
+    await controller.settle()
+
+    assert pick is not None and pick.title == "new"
+    assert voice.plays[:2] == ["https://cdn/a", "https://cdn/new"]
+    assert events(profiler) == []  # neither a skip nor a full listen
+    assert "Now playing: **new** (switched to house)" in sent(text_channel)
+    kwargs = curator.pick_switch.await_args.kwargs
+    assert kwargs == {"current_song_id": 1, "exclude_song_ids": [1]}
+
+
+@pytest.mark.asyncio
+async def test_switch_plays_before_queued_requests(
+    controller, voice, curator, resolver
+):
+    curator.pick_switch = AsyncMock(return_value=switched(9, "new"))
+    resolver.resolve.return_value = track("new", requested_by=None)
+    await controller.enqueue(track("a"))
+    await controller.enqueue(track("request"))
+
+    await controller.switch()
+    await controller.settle()
+    voice.finish()
+    await controller.settle()
+
+    assert voice.plays[:3] == [
+        "https://cdn/a",
+        "https://cdn/new",
+        "https://cdn/request",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_switch_when_idle_starts_playing(controller, voice, curator, resolver):
+    curator.pick_switch = AsyncMock(return_value=switched(9, "new"))
+    resolver.resolve.return_value = track("new", requested_by=None)
+
+    assert await controller.switch() is not None
+
+    assert voice.plays == ["https://cdn/new"]
+    assert curator.pick_switch.await_args.kwargs["current_song_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_switch_with_nowhere_to_go_keeps_playing(
+    controller, voice, curator, resolver
+):
+    curator.pick_switch = AsyncMock(return_value=None)
+    await controller.enqueue(track("a"))
+
+    assert await controller.switch() is None
+
+    assert voice.plays == ["https://cdn/a"]
+    assert controller.current is not None and controller.current.title == "a"
+
+
+@pytest.mark.asyncio
+async def test_switch_discards_the_prepared_pick(controller, voice, curator, resolver):
+    curator.pick_next.side_effect = [pick(2, "old genre"), pick(3, "after"), None]
+    curator.pick_switch = AsyncMock(return_value=switched(9, "new"))
+    resolver.resolve.side_effect = lambda *a, **k: track(k["hint"][0], None)
+    await controller.enqueue(track("a"))
+    await controller.settle()  # "old genre" prepared
+
+    await controller.switch()
+    await controller.settle()
+    voice.finish()
+    await controller.settle()
+
+    assert "https://cdn/old genre" not in voice.plays
+    assert voice.plays[:3] == ["https://cdn/a", "https://cdn/new", "https://cdn/after"]
+
+
+@pytest.mark.asyncio
+async def test_switch_to_similar_artist(
+    controller, voice, curator, resolver, text_channel
+):
+    curator.pick_similar = AsyncMock(return_value=pick(4, "like them"))
+    resolver.resolve.return_value = track("like them", requested_by=None)
+    similar = SimilarArtist(artist_id=7, name="Daft Punk", genre_ids=[3, 4])
+
+    await controller.switch(similar)
+
+    args = curator.pick_similar.await_args
+    assert args.args == (CHANNEL_ID, [ALICE, BOB], 7, [3, 4])
+    assert voice.plays == ["https://cdn/like them"]
+    assert "Now playing: **like them** (similar to Daft Punk)" in sent(text_channel)
+
+
+@pytest.mark.asyncio
+async def test_stop_cancels_a_pending_switch(controller, voice, curator, resolver):
+    curator.pick_switch = AsyncMock(return_value=switched(9, "new"))
+    resolver.resolve.return_value = track("new", requested_by=None)
+    voice.stop = MagicMock()  # the old song's end callback hasn't fired yet
+    await controller.enqueue(track("a"))
+
+    await controller.switch()
+    controller.stop()
+
+    assert controller._jump is None

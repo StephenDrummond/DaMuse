@@ -116,6 +116,50 @@ class Music(commands.Cog):
             await ctx.send(f"Queued **{track.title}**")
 
     @commands.command()
+    async def switch(
+        self, ctx: commands.Context, *, artist: Optional[str] = None
+    ) -> None:
+        """Change genre: `!switch` jumps to a random new genre, and
+        `!switch <artist>` jumps to songs like that artist."""
+        voice_state = getattr(ctx.author, "voice", None)
+        if ctx.guild is None or voice_state is None or voice_state.channel is None:
+            await ctx.send("You must be in a voice channel to switch the music!")
+            return
+
+        channel = voice_state.channel
+        voice_client = self._voice(ctx.guild.id)
+        if voice_client is None:
+            await channel.connect()
+        elif voice_client.channel != channel:
+            await voice_client.move_to(channel)
+
+        controller = self._controller(ctx.guild)
+        controller.text_channel = ctx.channel
+
+        async with ctx.typing():
+            similar_to = None
+            if artist:
+                try:
+                    similar_to = await self.services.seeder.prepare_artist(artist)
+                except Exception:
+                    logger.exception("Couldn't look up %r on Spotify", artist)
+                    await ctx.send("Couldn't reach Spotify right now. Try again soon.")
+                    return
+                if similar_to is None:
+                    await ctx.send(f"Couldn't find an artist called **{artist}**.")
+                    return
+            pick = await controller.switch(similar_to)
+
+        if pick is None:
+            if similar_to is not None:
+                await ctx.send(f"Couldn't find any songs like **{similar_to.name}**.")
+            else:
+                await ctx.send(
+                    "There's no other genre to switch to yet. "
+                    "Play some different music, or try `!switch <artist>`."
+                )
+
+    @commands.command()
     async def skip(self, ctx: commands.Context) -> None:
         """Skip the current song (counts against it for whoever skipped)."""
         controller = self.controllers.get(ctx.guild.id) if ctx.guild else None

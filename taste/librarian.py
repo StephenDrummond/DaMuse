@@ -59,41 +59,11 @@ class Librarian(DBClient):
         """
         if type(title) is not str or type(artist) is not str:
             raise TypeError("title and artist must be str")
-        genres = list(dict.fromkeys(genres))  # de-dupe, keep order
 
         async with self.db.transaction() as conn:
-            artist_id = await conn.fetchval(
-                """
-                INSERT INTO artists (name, spotify_id) VALUES ($1, $2)
-                ON CONFLICT (name) DO UPDATE
-                SET spotify_id = COALESCE(artists.spotify_id, EXCLUDED.spotify_id)
-                RETURNING id
-                """,
-                artist,
-                spotify_artist_id,
+            artist_id, genre_ids = await self._upsert_artist(
+                conn, artist, genres, spotify_artist_id
             )
-
-            genre_ids: list[int] = []
-            if genres:
-                rows = await conn.fetch(
-                    """
-                    INSERT INTO genres (name) SELECT unnest($1::varchar[])
-                    ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-                    RETURNING id
-                    """,
-                    genres,
-                )
-                genre_ids = [row["id"] for row in rows]
-                await conn.execute(
-                    """
-                    INSERT INTO artist_genres (artist_id, genre_id)
-                    SELECT $1, unnest($2::int[])
-                    ON CONFLICT DO NOTHING
-                    """,
-                    artist_id,
-                    genre_ids,
-                )
-
             song_id = await conn.fetchval(
                 """
                 INSERT INTO songs (title, artist_id, spotify_id, source)
@@ -109,6 +79,77 @@ class Librarian(DBClient):
             )
 
         return TrackIds(song_id=song_id, artist_id=artist_id, genre_ids=genre_ids)
+
+    async def register_artist(
+        self,
+        name: str,
+        genres: list[str],
+        spotify_artist_id: Optional[str] = None,
+    ) -> tuple[int, list[int]]:
+        """Insert the artist and their genres if missing, link them, and
+        return (artist id, genre ids). For artists known before any of their
+        songs, e.g. one named in !switch."""
+        async with self.db.transaction() as conn:
+            return await self._upsert_artist(conn, name, genres, spotify_artist_id)
+
+    async def find_artist(
+        self, name: str, spotify_artist_id: Optional[str] = None
+    ) -> Optional[tuple[int, str]]:
+        """(id, stored name) of an existing artist matching the Spotify id, or
+        the name ignoring case, so a differently capitalized name isn't
+        registered twice."""
+        row = await self.db.fetch_row(
+            """
+            SELECT id, name FROM artists
+            WHERE ($2::varchar IS NOT NULL AND spotify_id = $2)
+               OR lower(name) = lower($1)
+            ORDER BY spotify_id = $2 DESC NULLS LAST
+            LIMIT 1
+            """,
+            name,
+            spotify_artist_id,
+        )
+        return (row["id"], row["name"]) if row is not None else None
+
+    @staticmethod
+    async def _upsert_artist(
+        conn, name: str, genres: list[str], spotify_artist_id: Optional[str]
+    ) -> tuple[int, list[int]]:
+        """Shared by register_track and register_artist; runs inside the
+        caller's transaction. Spotify ids fill in, never replace."""
+        genres = list(dict.fromkeys(genres))  # de-dupe, keep order
+        artist_id = await conn.fetchval(
+            """
+            INSERT INTO artists (name, spotify_id) VALUES ($1, $2)
+            ON CONFLICT (name) DO UPDATE
+            SET spotify_id = COALESCE(artists.spotify_id, EXCLUDED.spotify_id)
+            RETURNING id
+            """,
+            name,
+            spotify_artist_id,
+        )
+
+        genre_ids: list[int] = []
+        if genres:
+            rows = await conn.fetch(
+                """
+                INSERT INTO genres (name) SELECT unnest($1::varchar[])
+                ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+                RETURNING id
+                """,
+                genres,
+            )
+            genre_ids = [row["id"] for row in rows]
+            await conn.execute(
+                """
+                INSERT INTO artist_genres (artist_id, genre_id)
+                SELECT $1, unnest($2::int[])
+                ON CONFLICT DO NOTHING
+                """,
+                artist_id,
+                genre_ids,
+            )
+        return artist_id, genre_ids
 
     async def get_track_ids(self, song_id: int) -> TrackIds | None:
         """Look up the artist and genre ids for an already-registered song."""

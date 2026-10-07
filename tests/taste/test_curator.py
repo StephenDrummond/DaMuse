@@ -251,3 +251,139 @@ async def test_pick_next_passes_context_to_candidates(db):
     assert candidate_args[3] == [ROCK]  # context genres seed the search
     assert candidate_args[8] == [ROCK]  # and rank first
     assert db.fetch_val.await_args.args[1] == 3
+
+
+# --- !switch -----------------------------------------------------------------
+
+HOUSE, TECHNO = 4, 5
+
+
+def candidate_rows(*cands):
+    return [
+        {
+            "song_id": c.song_id,
+            "title": c.title,
+            "artist": c.artist,
+            "artist_id": c.artist_id,
+            "genre_ids": c.genre_ids,
+        }
+        for c in cands
+    ]
+
+
+def switch_db(db, current_genres, cands, song_scores=None, genre_name="house"):
+    """Wire the fake db for pick_switch: scores, current genres, candidates."""
+    db.fetch.side_effect = [
+        [{"item_id": k, "score": v} for k, v in (song_scores or {}).items()],
+        [],
+        [],
+        candidate_rows(*cands),
+    ]
+    db.fetch_val.side_effect = [list(current_genres), genre_name]
+
+
+@pytest.mark.asyncio
+async def test_switch_never_picks_the_current_genre(db):
+    rock = candidate(1, artist_id=1, genre_ids=[ROCK])
+    rock_and_house = candidate(2, artist_id=2, genre_ids=[ROCK, HOUSE])
+    house = candidate(3, artist_id=3, genre_ids=[HOUSE])
+    switch_db(db, {ROCK}, [rock, rock_and_house, house])
+
+    pick = await Curator(db).pick_switch(10, [5], rng=random.Random(0))
+
+    # anything sharing a genre with the current song is out, even partly
+    assert pick is not None and pick.song_id == 3
+    assert pick.genre == "house"
+
+
+@pytest.mark.asyncio
+async def test_switch_picks_genre_at_random(db):
+    house = candidate(1, artist_id=1, genre_ids=[HOUSE])
+    techno = candidate(2, artist_id=2, genre_ids=[TECHNO])
+    picked = set()
+    for seed in range(40):
+        switch_db(db, {ROCK}, [house, techno])
+        pick = await Curator(db).pick_switch(10, [5], rng=random.Random(seed))
+        assert pick is not None
+        picked.add(pick.song_id)
+
+    assert picked == {1, 2}
+
+
+@pytest.mark.asyncio
+async def test_switch_skips_disliked_genres(db):
+    disliked_house = candidate(1, artist_id=1, genre_ids=[HOUSE])
+    techno = candidate(2, artist_id=2, genre_ids=[TECHNO])
+    switch_db(db, {ROCK}, [disliked_house, techno], song_scores={1: 0.1})
+
+    pick = await Curator(db).pick_switch(10, [5], rng=random.Random(0))
+
+    assert pick is not None and pick.song_id == 2
+
+
+@pytest.mark.asyncio
+async def test_switch_with_nowhere_to_go(db):
+    switch_db(db, {ROCK}, [candidate(1, artist_id=1, genre_ids=[ROCK])])
+
+    assert await Curator(db).pick_switch(10, [5]) is None
+
+
+@pytest.mark.asyncio
+async def test_switch_needs_listeners(db):
+    assert await Curator(db).pick_switch(10, []) is None
+    db.fetch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_similar_picks_the_artist_or_their_genres(db):
+    by_artist = candidate(1, artist_id=7, genre_ids=[HOUSE])
+    same_genre = candidate(2, artist_id=8, genre_ids=[HOUSE, TECHNO])
+    unrelated = candidate(3, artist_id=9, genre_ids=[ROCK])
+    picks = set()
+    for seed in range(40):
+        db.fetch.side_effect = [
+            [],
+            [],
+            [],
+            candidate_rows(by_artist, same_genre, unrelated),
+        ]
+        pick = await Curator(db).pick_similar(
+            10, [5], artist_id=7, genre_ids=[HOUSE], rng=random.Random(seed)
+        )
+        assert pick is not None
+        picks.add(pick.song_id)
+
+    assert picks == {1, 2}  # never the unrelated rock song
+
+
+@pytest.mark.asyncio
+async def test_similar_seeds_the_artist_into_the_search(db):
+    db.fetch.side_effect = [[], [], [], []]
+
+    await Curator(db).pick_similar(10, [5], artist_id=7, genre_ids=[HOUSE])
+
+    candidate_args = db.fetch.await_args_list[3].args
+    assert 7 in candidate_args[2]  # artist seeds
+    assert HOUSE in candidate_args[3] and candidate_args[8] == [HOUSE]
+
+
+@pytest.mark.asyncio
+async def test_similar_without_genres_sticks_to_the_artist(db):
+    by_artist = candidate(1, artist_id=7, genre_ids=[])
+    other = candidate(2, artist_id=8, genre_ids=[ROCK])
+    db.fetch.side_effect = [[], [], [], candidate_rows(by_artist, other)]
+
+    pick = await Curator(db).pick_similar(
+        10, [5], artist_id=7, genre_ids=[], rng=random.Random(0)
+    )
+
+    assert pick is not None and pick.song_id == 1
+
+
+@pytest.mark.asyncio
+async def test_similar_works_with_nobody_listening(db):
+    db.fetch.side_effect = [candidate_rows(candidate(1, artist_id=7, genre_ids=[]))]
+
+    pick = await Curator(db).pick_similar(10, [], artist_id=7, genre_ids=[])
+
+    assert pick is not None  # no history needed: unrated songs count as neutral

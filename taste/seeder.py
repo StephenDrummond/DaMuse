@@ -31,6 +31,15 @@ class SeedArtist:
     spotify_id: Optional[str]
 
 
+@dataclass(frozen=True)
+class SimilarArtist:
+    """An artist named in `!switch <artist>`, ready for the Curator."""
+
+    artist_id: int
+    name: str
+    genre_ids: list[int]
+
+
 class Seeder(DBClient):
     def __init__(self, db, spotify: SpotifyClient, librarian: Librarian):
         super().__init__(db)
@@ -61,7 +70,42 @@ class Seeder(DBClient):
             for r in rows
         ]
 
-    async def seed_artist(self, artist: SeedArtist) -> int:
+    async def prepare_artist(self, name: str) -> Optional[SimilarArtist]:
+        """Find `name` on Spotify, register the artist and their genres, and
+        add their top tracks now (unless seeded within RESEED_AFTER_DAYS), so
+        there's something to play even for an artist nobody has played.
+        None if Spotify has no such artist."""
+        info = await self.spotify.find_artist(name)
+        if info is None:
+            return None
+
+        existing = await self.librarian.find_artist(info["name"], info["id"])
+        stored_name = existing[1] if existing else info["name"]
+        artist_id, genre_ids = await self.librarian.register_artist(
+            stored_name, info["genres"], info["id"]
+        )
+
+        seeded_recently = await self.db.fetch_val(
+            """
+            SELECT seeded_at > now() - make_interval(days => $2)
+            FROM artists WHERE id = $1
+            """,
+            artist_id,
+            RESEED_AFTER_DAYS,
+        )
+        if not seeded_recently:
+            added = await self.seed_artist(
+                SeedArtist(id=artist_id, name=stored_name, spotify_id=info["id"]),
+                info,
+            )
+            await self.db.execute(
+                "UPDATE artists SET seeded_at = now() WHERE id = $1", artist_id
+            )
+            logger.info("Seeded %r for !switch: %d new song(s)", stored_name, added)
+
+        return SimilarArtist(artist_id=artist_id, name=stored_name, genre_ids=genre_ids)
+
+    async def seed_artist(self, artist: SeedArtist, info: Optional[dict] = None) -> int:
         """Register `artist`'s top tracks; returns how many songs were new.
 
         Only tracks where this artist is the main artist are added, so a
@@ -69,10 +113,12 @@ class Seeder(DBClient):
         registered under our stored name, so a different capitalization on
         Spotify can't create a duplicate artist.
         """
-        if artist.spotify_id:
-            info = await self.spotify.get_artist(artist.spotify_id)
-        else:
-            info = await self.spotify.find_artist(artist.name)
+        if info is None:  # not already looked up by the caller
+            info = (
+                await self.spotify.get_artist(artist.spotify_id)
+                if artist.spotify_id
+                else await self.spotify.find_artist(artist.name)
+            )
         if info is None:
             logger.info(
                 "No Spotify artist for %r; retrying in %d days",

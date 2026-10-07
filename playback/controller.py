@@ -18,6 +18,7 @@ from discord.abc import Messageable
 from audio.audio_resolver import AudioResolver, Playable, Track
 from taste.curator import Curator, Pick
 from taste.profiler import PlayRecord, Profiler
+from taste.seeder import SimilarArtist
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,10 @@ class PlaybackController:
         # the room's next pick, prepared while the current song plays so the
         # next one starts without a gap (see _prepare_upcoming)
         self._upcoming: Optional["asyncio.Task[Optional[Prepared]]"] = None
+        # !switch: the song to play next, ahead of queued requests, with the
+        # note its announcement gets ("switched to house")
+        self._jump: Optional[tuple[Track, Pick, str]] = None
+        self._next_label: Optional[str] = None
 
         # serializes "start the next song" so concurrent !play / track-end
         # callbacks can't both start playback
@@ -135,9 +140,63 @@ class PlaybackController:
         self._end_current(voice)
         return True
 
+    async def switch(
+        self, similar_to: Optional[SimilarArtist] = None
+    ) -> Optional[Pick]:
+        """!switch: leave the current genre for a random new one, or with
+        `similar_to`, go to songs like that artist. The new song starts right
+        away; queued requests stay queued and play after it, and the room's
+        picks then follow the new song's genre. Returns the pick, or None if
+        there was nothing to switch to (playback carries on unchanged)."""
+        voice = self._voice()
+        if voice is None:
+            return None
+        self._loop = asyncio.get_running_loop()
+        channel = voice.channel
+        current_id = await self._current_song_id()
+        exclude = [current_id] if current_id is not None else []
+
+        try:
+            if similar_to is None:
+                pick = await self.curator.pick_switch(
+                    channel.id,
+                    listener_ids(channel),
+                    current_song_id=current_id,
+                    exclude_song_ids=exclude,
+                )
+                label = f"switched to {pick.genre}" if pick and pick.genre else ""
+            else:
+                pick = await self.curator.pick_similar(
+                    channel.id,
+                    listener_ids(channel),
+                    similar_to.artist_id,
+                    similar_to.genre_ids,
+                    exclude_song_ids=exclude,
+                )
+                label = f"similar to {similar_to.name}"
+            track = await self._resolve_pick(pick) if pick is not None else None
+        except Exception:
+            logger.exception("Couldn't switch in %s", self.guild_id)
+            return None
+        if pick is None or track is None:
+            return None
+
+        self._discard_upcoming()  # it was picked to follow the old genre
+        self._jump = (track, pick, label or "switched genre")
+        self.stopping = False
+        if self.current is not None:
+            # cut the current song short: not a full listen, but not a skip
+            # either, since switching says nothing about liking the song
+            self.skipped = True
+            self._end_current(voice)
+        else:
+            await self.play_next()
+        return pick
+
     def stop(self) -> None:
         """Clear the queue and stop the current song without advancing."""
         self.queue.clear()
+        self._jump = None
         self._discard_upcoming()
         voice = self._voice()
         if voice is not None and self.current is not None:
@@ -209,13 +268,22 @@ class PlaybackController:
 
                 self._prepare_upcoming(voice.channel)
 
-                suffix = " (picked for the room)" if pick else ""
+                if self._next_label:
+                    suffix = f" ({self._next_label})"
+                elif pick:
+                    suffix = " (picked for the room)"
+                else:
+                    suffix = ""
                 await self.announce(f"Now playing: **{track.title}**{suffix}")
                 return
 
     async def _next_track(self, channel: Any) -> tuple[Optional[Track], Optional[Pick]]:
-        """Next requested song, else the pick prepared during the last song,
-        else a fresh pick for the room."""
+        """The !switch song, else the next requested song, else the pick
+        prepared during the last song, else a fresh pick for the room."""
+        self._next_label = None
+        if self._jump is not None:
+            (track, pick, self._next_label), self._jump = self._jump, None
+            return track, pick
         if self.queue:
             return self.queue.popleft(), None
 
@@ -272,15 +340,28 @@ class PlaybackController:
             )
             if pick is None:
                 return None
-            track = await self.resolver.resolve(
-                f"{pick.artist} - {pick.title}",
-                requested_by=None,
-                hint=(pick.title, pick.artist),
-            )
+            track = await self._resolve_pick(pick)
             return (track, pick) if track is not None else None
         except Exception:
             logger.exception("Couldn't pick a song for the room in %s", self.guild_id)
             return None
+
+    async def _resolve_pick(self, pick: Pick) -> Optional[Track]:
+        return await self.resolver.resolve(
+            f"{pick.artist} - {pick.title}",
+            requested_by=None,
+            hint=(pick.title, pick.artist),
+        )
+
+    async def _current_song_id(self) -> Optional[int]:
+        """The playing song's id, once it's identified (None if it can't be)."""
+        if self.current_play is None:
+            return None
+        try:
+            record = await self.current_play
+        except Exception:
+            return None  # logged where the play is recorded
+        return record.track.song_id if record is not None else None
 
     def _end_current(self, voice: VoiceConnection) -> None:
         if voice.is_playing():

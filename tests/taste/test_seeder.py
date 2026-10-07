@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from taste import seeder as seeder_module
-from taste.seeder import ARTISTS_PER_ROUND, MARKET, SeedArtist, Seeder
+from taste.seeder import ARTISTS_PER_ROUND, MARKET, SeedArtist, Seeder, SimilarArtist
 
 PINK_FLOYD = {"id": "pf", "name": "Pink Floyd", "genres": ["rock", "prog"]}
 
@@ -123,3 +123,46 @@ async def test_run_forever_drains_backlog_quickly(seeder, monkeypatch):
         seeder_module.BACKLOG_PAUSE_SECONDS,
         seeder_module.SEED_INTERVAL_SECONDS,
     ]
+
+
+# --- prepare_artist (!switch <artist>) ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_prepare_artist_registers_and_seeds_now(db, spotify, librarian):
+    librarian.find_artist.return_value = None
+    librarian.register_artist.return_value = (12, [3, 4])
+    db.fetch_val.side_effect = [None, 0, 2]  # never seeded; song counts 0 -> 2
+    seeder = Seeder(db, spotify, librarian)
+
+    similar = await seeder.prepare_artist("pink floyd")
+
+    assert similar == SimilarArtist(artist_id=12, name="Pink Floyd", genre_ids=[3, 4])
+    librarian.register_artist.assert_awaited_once_with(
+        "Pink Floyd", ["rock", "prog"], "pf"
+    )
+    spotify.artist_top_tracks.assert_awaited_once_with("pf", MARKET)
+    spotify.get_artist.assert_not_awaited()  # reuses the lookup it already did
+    assert "SET seeded_at = now()" in db.execute.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_prepare_artist_keeps_our_stored_name(db, spotify, librarian):
+    librarian.find_artist.return_value = (12, "pink floyd")
+    librarian.register_artist.return_value = (12, [3])
+    db.fetch_val.side_effect = [True]  # seeded recently: no Spotify top tracks
+    seeder = Seeder(db, spotify, librarian)
+
+    similar = await seeder.prepare_artist("PINK FLOYD")
+
+    assert similar is not None and similar.name == "pink floyd"
+    assert librarian.register_artist.await_args.args[0] == "pink floyd"
+    spotify.artist_top_tracks.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_prepare_artist_unknown(db, spotify, librarian):
+    spotify.find_artist.return_value = None
+
+    assert await Seeder(db, spotify, librarian).prepare_artist("Nobody") is None
+    librarian.register_artist.assert_not_awaited()

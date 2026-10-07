@@ -424,3 +424,30 @@ async def test_curator_context_comes_from_the_playing_song(profiler, librarian, 
     )
 
     assert pick is not None and pick.title == "Night Fever" and pick.cohesive
+
+
+@pytest.mark.asyncio
+async def test_switch_leaves_the_current_genre(profiler, librarian, pg):
+    await like(profiler, "Money", "Pink Floyd", ["rock"], [ALICE], channel=99)
+    await like(profiler, "Stayin' Alive", "Bee Gees", ["disco"], [ALICE], channel=99)
+    await librarian.register_track("Time", "Pink Floyd", ["rock"])
+    await librarian.register_track("Night Fever", "Bee Gees", ["disco"])
+    profiler.spotify.search_track.return_value = {
+        "name": "Money",
+        "artists": ["Pink Floyd"],
+        "genres": ["rock"],
+    }
+    rock = await profiler.record_play(1, 10, "Money", "Pink Floyd", requested_by=ALICE)
+    assert rock is not None
+
+    curator = Curator(pg)
+    for seed in range(20):
+        pick = await curator.pick_switch(
+            10,
+            [ALICE],
+            current_song_id=rock.track.song_id,
+            exclude_song_ids=[rock.track.song_id],
+            rng=random.Random(seed),
+        )
+        assert pick is not None
+        assert pick.artist == "Bee Gees" and pick.genre == "disco"

@@ -12,6 +12,8 @@ channel. Someone joins and their taste starts counting. Someone leaves and it st
 | `!play <song>` | Plays a song. Accepts a search term, a YouTube link or a Spotify track link. If something is already playing, the song is queued. |
 | `!play` | With nothing after it, starts playing songs picked for the people in the channel. |
 | `!skip` | Skips the current song. Counts as a mild dislike for whoever skipped. |
+| `!switch` | Jumps to a random genre that has nothing in common with the current song, and keeps playing in that genre. |
+| `!switch <artist>` | Jumps to a song by that artist or one in the same genres. Works for artists nobody has played yet. |
 | `!stop` | Stops playback and clears the queue. |
 | `!like` / `!dislike` | Tells the bot how you feel about the current song. These count much more than listening or skipping. |
 | `!hello` | Health check. |
@@ -89,6 +91,15 @@ voice channel:
 While a song is playing, the bot already prepares the pick after it, so there is no pause
 between songs. If nothing can be picked, it says so in the text channel and starts the
 inactivity timer.
+
+`!switch` changes direction. It skips the current song (without counting it as a skip),
+then picks a genre at random from the genres that share nothing with the current song and
+have at least one song the room does not dislike. It picks a song in that genre the usual way,
+and from then on picks follow the new genre. `!switch <artist>` looks the artist up on Spotify,
+adds their top tracks if the bot does not have them yet, and picks a song by that artist or
+another artist with the same genres. Spotify does not give this app "similar artist" data, so
+similar means sharing genres. In both cases queued requests stay in the queue and play after
+the new song.
 
 The Curator can only pick songs that are in the `songs` table. Songs get there by being played,
 or by the worker adding known artists' top tracks (next section).
@@ -194,8 +205,9 @@ poetry run python -m db.migrate docs/db/migrations/003_spotify_seeding.sql
 ```
 
 The nightly score decay is optional and needs the `pg_cron` extension. Add `pg_cron` to
-`shared_preload_libraries` in the cluster's parameter group, reboot, run
-`CREATE EXTENSION pg_cron;`, then install the job:
+`shared_preload_libraries` in the cluster's parameter group and reboot the writer instance,
+then install the job (the script creates the extension, and tells you if `pg_cron` is not
+loaded yet):
 
 ```powershell
 poetry run python -m db.schedule_decay_preferences

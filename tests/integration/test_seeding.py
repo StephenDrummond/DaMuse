@@ -137,3 +137,20 @@ async def test_seeded_songs_become_curator_candidates(seeder, librarian, pg):
         picks.add(pick.title)
     # never-played songs by a liked artist are now pickable
     assert {"Time", "Wish You Were Here"} <= picks
+
+
+@pytest.mark.asyncio
+async def test_prepare_artist_then_similar_pick(seeder, librarian, pg):
+    similar = await seeder.prepare_artist("pink floyd")
+
+    assert similar is not None and similar.name == "Pink Floyd"
+    assert await pg.fetch_val("SELECT count(*) FROM songs") == 3  # top tracks
+    pick = await Curator(pg).pick_similar(
+        10, [ALICE], similar.artist_id, similar.genre_ids, rng=random.Random(0)
+    )
+    assert pick is not None and pick.artist == "Pink Floyd"
+
+    # asking again doesn't re-seed or duplicate
+    again = await seeder.prepare_artist("PINK FLOYD")
+    assert again is not None and again.artist_id == similar.artist_id
+    assert await pg.fetch_val("SELECT count(*) FROM artists") == 1

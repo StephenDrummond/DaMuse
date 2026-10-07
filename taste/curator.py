@@ -1,6 +1,6 @@
 import asyncio
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from db.client import DBClient
@@ -44,6 +44,8 @@ class Pick:
     # shares a genre with the song it follows (False: no match was acceptable,
     # or there was nothing to follow)
     cohesive: bool = False
+    # for !switch: the genre the room was switched to
+    genre: Optional[str] = None
 
 
 class Curator(DBClient):
@@ -95,6 +97,7 @@ class Curator(DBClient):
         scores: dict[str, dict[int, float]],
         exclude_song_ids: Optional[list[int]] = None,
         context_genres: frozenset[int] = frozenset(),
+        extra_artist_ids: tuple[int, ...] = (),
     ) -> list[Candidate]:
         """Songs connected to anything the group likes or to the genres of
         the song being followed, minus recent plays and `exclude_song_ids`.
@@ -105,6 +108,7 @@ class Curator(DBClient):
         # the followed song's genres find candidates even if the room
         # hasn't rated them yet (e.g. seeded songs in the same genre)
         genre_seeds = list(dict.fromkeys([*context_genres, *seeds["genre"]]))
+        artist_seeds = list(dict.fromkeys([*extra_artist_ids, *seeds["artist"]]))
         rows = await self.db.fetch(
             """
             SELECT s.id AS song_id, s.title, a.name AS artist, s.artist_id,
@@ -129,7 +133,7 @@ class Curator(DBClient):
             LIMIT $6
             """,
             seeds["song"],
-            seeds["artist"],
+            artist_seeds,
             genre_seeds,
             channel_id,
             RECENT_MINUTES,
@@ -176,6 +180,80 @@ class Curator(DBClient):
         )
         return self.choose(candidates, scores, rng or random.Random(), context)
 
+    async def pick_switch(
+        self,
+        channel_id: int,
+        member_ids: list[int],
+        current_song_id: Optional[int] = None,
+        exclude_song_ids: Optional[list[int]] = None,
+        rng: Optional[random.Random] = None,
+    ) -> Optional[Pick]:
+        """For !switch: leave the current genre for a random new one.
+
+        The new genre is chosen at random among genres that have at least
+        one acceptable song sharing no genre with the current song (the one
+        playing, else the channel's last play); the song within it is chosen
+        by the room's taste as usual. None if there's nowhere to switch to."""
+        if not member_ids:
+            return None
+        rng = rng or random.Random()
+        scores = await self.group_scores(member_ids)
+        current = await self.context_genres(channel_id, current_song_id)
+        candidates = await self.candidates(channel_id, scores, exclude_song_ids)
+
+        elsewhere = [
+            c for c in candidates if c.genre_ids and not current & set(c.genre_ids)
+        ]
+        acceptable = [c for _, c in self.acceptable(elsewhere, scores)]
+        genres = sorted({g for c in acceptable for g in c.genre_ids})
+        if not genres:
+            return None
+        genre = rng.choice(genres)
+
+        pick = self.choose(
+            [c for c in acceptable if genre in c.genre_ids],
+            scores,
+            rng,
+            frozenset({genre}),
+        )
+        if pick is None:
+            return None
+        name = await self.db.fetch_val("SELECT name FROM genres WHERE id = $1", genre)
+        return replace(pick, genre=name)
+
+    async def pick_similar(
+        self,
+        channel_id: int,
+        member_ids: list[int],
+        artist_id: int,
+        genre_ids: list[int],
+        exclude_song_ids: Optional[list[int]] = None,
+        rng: Optional[random.Random] = None,
+    ) -> Optional[Pick]:
+        """For !switch <artist>: a song by the artist or sharing their
+        genres, chosen by the room's taste. Songs nobody has rated count as
+        neutral, so this works even with no history. If the artist has no
+        genres on Spotify, only their own songs qualify."""
+        genres = frozenset(genre_ids)
+        scores = (
+            await self.group_scores(member_ids)
+            if member_ids
+            else {kind: {} for kind in KINDS}
+        )
+        candidates = await self.candidates(
+            channel_id,
+            scores,
+            exclude_song_ids,
+            genres,
+            extra_artist_ids=(artist_id,),
+        )
+        similar = [
+            c
+            for c in candidates
+            if c.artist_id == artist_id or genres & set(c.genre_ids)
+        ]
+        return self.choose(similar, scores, rng or random.Random(), genres)
+
     @staticmethod
     def top_liked(scores: dict[int, float]) -> list[int]:
         """The SEED_LIMIT best-scored items the room doesn't dislike: the
@@ -202,6 +280,25 @@ class Curator(DBClient):
         return sum(WEIGHTS[kind] * value for kind, value in parts.items())
 
     @classmethod
+    def acceptable(
+        cls, candidates: list[Candidate], scores: dict[str, dict[int, float]]
+    ) -> list[tuple[float, Candidate]]:
+        """(score, candidate) pairs that may be played, best first: scoring
+        above DISLIKE_THRESHOLD, and not a song the room dislikes specifically
+        (its own song score below the threshold), even if its artist and
+        genres would lift its total."""
+        scored = (
+            (cls.score_candidate(c, scores), c)
+            for c in candidates
+            if scores["song"].get(c.song_id, cls.NEUTRAL_SCORE) >= DISLIKE_THRESHOLD
+        )
+        return sorted(
+            ((s, c) for s, c in scored if s > DISLIKE_THRESHOLD),
+            key=lambda pair: pair[0],
+            reverse=True,
+        )
+
+    @classmethod
     def choose(
         cls,
         candidates: list[Candidate],
@@ -220,16 +317,7 @@ class Curator(DBClient):
         from; otherwise every acceptable candidate is. Weighting by margin
         over the threshold favors what the room likes most while keeping
         some variety."""
-        ranked = sorted(
-            (
-                (cls.score_candidate(c, scores), c)
-                for c in candidates
-                if scores["song"].get(c.song_id, cls.NEUTRAL_SCORE) >= DISLIKE_THRESHOLD
-            ),
-            key=lambda pair: pair[0],
-            reverse=True,
-        )
-        acceptable = [(s, c) for s, c in ranked if s > DISLIKE_THRESHOLD]
+        acceptable = cls.acceptable(candidates, scores)
         cohesive = [(s, c) for s, c in acceptable if context_genres & set(c.genre_ids)]
         top = (cohesive or acceptable)[:TOP_K]
         if not top:
