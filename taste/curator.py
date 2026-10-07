@@ -1,13 +1,13 @@
 import asyncio
 import random
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from db.client import DBClient
 
-# How much each level of taste counts toward a candidate song's group score.
+# How much each level of taste counts toward one member's estimate for a song.
 WEIGHTS: dict[str, float] = {"song": 0.5, "artist": 0.3, "genre": 0.2}
-SEED_LIMIT = 50  # top liked songs/artists/genres used to find candidates
+SEED_LIMIT = 50  # each member's top songs/artists/genres used to find candidates
 CANDIDATE_LIMIT = 500
 TOP_K = 10  # pick randomly (weighted) among this many best candidates
 RECENT_MINUTES = 120  # don't repeat a song played in the channel this recently
@@ -19,11 +19,32 @@ CONTEXT_MINUTES = 30
 # stand-in for things nobody in the room has reacted to, never a cutoff.
 DISLIKE_THRESHOLD = 0.35
 
+# Least misery. The room's score for a song sits this far from the (weighted)
+# average toward the least happy member: 0 = plain average, 1 = the least happy
+# member decides. Anything a present member would score at or below
+# DISLIKE_THRESHOLD is never played, however much the others like it.
+DISAGREEMENT_WEIGHT = 0.5
+
+# Fairness. How well each present member's taste was served by the channel's
+# last FAIRNESS_PLAYS songs (within FAIRNESS_MINUTES); anyone noticeably below
+# the room's average (by more than FAIRNESS_MARGIN) counts UNDERSERVED_WEIGHT
+# times as much in the next pick, so the music drifts back toward them.
+FAIRNESS_PLAYS = 5
+FAIRNESS_MINUTES = 60
+FAIRNESS_MARGIN = 0.02
+UNDERSERVED_WEIGHT = 2.0
+
 KINDS: dict[str, str] = {
     "song": "song_user_likes",
     "artist": "artist_user_likes",
     "genre": "genre_user_likes",
 }
+
+Scores = dict[str, dict[int, float]]  # kind ("song"/"artist"/"genre") -> item -> score
+
+
+def empty_scores() -> Scores:
+    return {kind: {} for kind in KINDS}
 
 
 @dataclass(frozen=True)
@@ -48,23 +69,167 @@ class Pick:
     genre: Optional[str] = None
 
 
+def estimate(candidate: Candidate, scores: Scores) -> float:
+    """How much one member would like `candidate`, from their song, artist
+    and genre scores (anything they never reacted to counts as neutral)."""
+    neutral = DBClient.NEUTRAL_SCORE
+    genre_scores = [scores["genre"].get(g, neutral) for g in candidate.genre_ids]
+    parts = {
+        "song": scores["song"].get(candidate.song_id, neutral),
+        "artist": scores["artist"].get(candidate.artist_id, neutral),
+        "genre": sum(genre_scores) / len(genre_scores) if genre_scores else neutral,
+    }
+    return sum(WEIGHTS[kind] * value for kind, value in parts.items())
+
+
+@dataclass
+class RoomTaste:
+    """Everyone in the voice channel: each member's own scores, and how much
+    each member counts for this pick (1 unless underserved lately)."""
+
+    scores: dict[int, Scores]  # member id -> their scores
+    weights: dict[int, float] = field(default_factory=dict)
+
+    @classmethod
+    def solo(cls, scores: Scores, member_id: int = 0) -> "RoomTaste":
+        return cls({member_id: scores})
+
+    @property
+    def members(self) -> list[int]:
+        return list(self.scores)
+
+    def is_empty(self) -> bool:
+        """True if nobody present has reacted to anything yet (cold start)."""
+        return not any(any(s.values()) for s in self.scores.values())
+
+    def weight(self, member_id: int) -> float:
+        return self.weights.get(member_id, 1.0)
+
+    def seeds(self, kind: str) -> list[int]:
+        """The items to look for candidates around: every member's own top
+        SEED_LIMIT, so one heavy listener's history can't crowd out the rest."""
+        seeds: dict[int, None] = {}
+        for member_scores in self.scores.values():
+            seeds.update(dict.fromkeys(Curator.top_liked(member_scores[kind])))
+        return list(seeds)
+
+    def evaluate(self, candidate: Candidate) -> Optional[float]:
+        """The room's score for `candidate`, or None if it must not play.
+
+        Vetoed if any member dislikes the song itself (its own song score is
+        below DISLIKE_THRESHOLD), or would score it at or below the threshold
+        overall. Otherwise: the weighted average of every member's estimate,
+        pulled DISAGREEMENT_WEIGHT of the way toward the least happy member.
+        With one member this is simply their estimate."""
+        if not self.scores:  # nobody listening: everything is neutral
+            score = estimate(candidate, empty_scores())
+            return score if score > DISLIKE_THRESHOLD else None
+
+        neutral = DBClient.NEUTRAL_SCORE
+        estimates: dict[int, float] = {}
+        for member_id, member_scores in self.scores.items():
+            if (
+                member_scores["song"].get(candidate.song_id, neutral)
+                < DISLIKE_THRESHOLD
+            ):
+                return None
+            estimates[member_id] = estimate(candidate, member_scores)
+
+        least = min(estimates.values())
+        if least <= DISLIKE_THRESHOLD:
+            return None
+        total_weight = sum(self.weight(m) for m in estimates)
+        average = (
+            sum(self.weight(m) * score for m, score in estimates.items()) / total_weight
+        )
+        return average - DISAGREEMENT_WEIGHT * (average - least)
+
+
+CANDIDATE_COLUMNS = """
+    s.id AS song_id, s.title, a.name AS artist, s.artist_id,
+    ARRAY(SELECT genre_id FROM artist_genres
+          WHERE artist_id = s.artist_id) AS genre_ids
+"""
+
+
+def candidate_from_row(row) -> Candidate:
+    return Candidate(
+        song_id=row["song_id"],
+        title=row["title"],
+        artist=row["artist"],
+        artist_id=row["artist_id"],
+        genre_ids=list(row["genre_ids"]),
+    )
+
+
 class Curator(DBClient):
-    """Picks what a voice channel should hear next from the combined taste of
-    everyone in it. Stateless: membership comes from Discord and scores from
-    Postgres on every call, so any process can curate any channel."""
+    """Picks what a voice channel should hear next for everyone in it: no
+    song anyone present would dislike, disagreement counts against a song,
+    and whoever has been least served lately counts extra. Stateless:
+    membership comes from Discord and scores from Postgres on every call, so
+    any process can curate any channel."""
 
-    async def group_scores(self, member_ids: list[int]) -> dict[str, dict[int, float]]:
-        """Average song/artist/genre scores across the members (missing = neutral)."""
+    async def room_taste(self, channel_id: int, member_ids: list[int]) -> RoomTaste:
+        """Each member's scores, plus fairness weights from recent plays."""
         members = sorted(set(member_ids))
+        scores: dict[int, Scores] = {m: empty_scores() for m in members}
 
-        async def fetch(table: str) -> dict[int, float]:
+        async def fetch(kind: str, table: str) -> None:
+            _, _, id_column = self.PREFERENCE_TABLE_MAPPING[table]
             rows = await self.db.fetch(
-                self.build_group_scores_query(table), members, len(members)
+                f"""
+                SELECT user_id, {id_column} AS item_id, preference_score AS score
+                FROM {table}
+                WHERE user_id = ANY($1::bigint[])
+                """,
+                members,
             )
-            return {row["item_id"]: row["score"] for row in rows}
+            for row in rows:
+                scores[row["user_id"]][kind][row["item_id"]] = row["score"]
 
-        results = await asyncio.gather(*(fetch(table) for table in KINDS.values()))
-        return dict(zip(KINDS, results))
+        if members:
+            await asyncio.gather(*(fetch(kind, table) for kind, table in KINDS.items()))
+        taste = RoomTaste(scores)
+        taste.weights = await self.fairness_weights(channel_id, taste)
+        return taste
+
+    async def fairness_weights(
+        self, channel_id: int, taste: RoomTaste
+    ) -> dict[int, float]:
+        """UNDERSERVED_WEIGHT for each member the channel's recent songs suited
+        noticeably worse than the room on average; empty if everyone is even,
+        there's one member, or nothing played lately."""
+        if len(taste.members) < 2:
+            return {}
+        rows = await self.db.fetch(
+            f"""
+            SELECT {CANDIDATE_COLUMNS}
+            FROM plays p
+            JOIN songs s ON s.id = p.song_id
+            JOIN artists a ON a.id = s.artist_id
+            WHERE p.channel_id = $1
+              AND p.started_at > now() - make_interval(mins => $2)
+            ORDER BY p.started_at DESC
+            LIMIT $3
+            """,
+            channel_id,
+            FAIRNESS_MINUTES,
+            FAIRNESS_PLAYS,
+        )
+        recent = [candidate_from_row(row) for row in rows]
+        if not recent:
+            return {}
+        satisfaction = {
+            member_id: sum(estimate(song, member_scores) for song in recent)
+            / len(recent)
+            for member_id, member_scores in taste.scores.items()
+        }
+        room_average = sum(satisfaction.values()) / len(satisfaction)
+        return {
+            member_id: UNDERSERVED_WEIGHT
+            for member_id, served in satisfaction.items()
+            if served < room_average - FAIRNESS_MARGIN
+        }
 
     async def context_genres(
         self, channel_id: int, song_id: Optional[int] = None
@@ -94,26 +259,22 @@ class Curator(DBClient):
     async def candidates(
         self,
         channel_id: int,
-        scores: dict[str, dict[int, float]],
+        taste: RoomTaste,
         exclude_song_ids: Optional[list[int]] = None,
         context_genres: frozenset[int] = frozenset(),
         extra_artist_ids: tuple[int, ...] = (),
     ) -> list[Candidate]:
-        """Songs connected to anything the group likes or to the genres of
-        the song being followed, minus recent plays and `exclude_song_ids`.
-        Ordered so the CANDIDATE_LIMIT keeps the most relevant: genre
-        matches with the followed song first, then the room's liked songs,
-        then liked artists."""
-        seeds = {kind: self.top_liked(scores[kind]) for kind in KINDS}
-        # the followed song's genres find candidates even if the room
-        # hasn't rated them yet (e.g. seeded songs in the same genre)
-        genre_seeds = list(dict.fromkeys([*context_genres, *seeds["genre"]]))
-        artist_seeds = list(dict.fromkeys([*extra_artist_ids, *seeds["artist"]]))
+        """Songs connected to anything a member likes or to the genres of the
+        song being followed, minus recent plays and `exclude_song_ids`.
+        Ordered so the CANDIDATE_LIMIT keeps the most relevant: genre matches
+        with the followed song first, then liked songs, then liked artists."""
+        # the followed song's genres find candidates even if nobody has
+        # rated them yet (e.g. seeded songs in the same genre)
+        genre_seeds = list(dict.fromkeys([*context_genres, *taste.seeds("genre")]))
+        artist_seeds = list(dict.fromkeys([*extra_artist_ids, *taste.seeds("artist")]))
         rows = await self.db.fetch(
-            """
-            SELECT s.id AS song_id, s.title, a.name AS artist, s.artist_id,
-                   ARRAY(SELECT genre_id FROM artist_genres
-                         WHERE artist_id = s.artist_id) AS genre_ids
+            f"""
+            SELECT {CANDIDATE_COLUMNS}
             FROM songs s
             JOIN artists a ON a.id = s.artist_id
             WHERE (s.id = ANY($1::int[])
@@ -132,7 +293,7 @@ class Curator(DBClient):
                      s.artist_id = ANY($2::int[]) DESC
             LIMIT $6
             """,
-            seeds["song"],
+            taste.seeds("song"),
             artist_seeds,
             genre_seeds,
             channel_id,
@@ -141,16 +302,7 @@ class Curator(DBClient):
             exclude_song_ids or [],
             list(context_genres),
         )
-        return [
-            Candidate(
-                song_id=row["song_id"],
-                title=row["title"],
-                artist=row["artist"],
-                artist_id=row["artist_id"],
-                genre_ids=list(row["genre_ids"]),
-            )
-            for row in rows
-        ]
+        return [candidate_from_row(row) for row in rows]
 
     async def pick_next(
         self,
@@ -171,14 +323,12 @@ class Curator(DBClient):
         e.g. the one playing right now while the next pick is prepared."""
         if not member_ids:
             return None
-        scores = await self.group_scores(member_ids)
-        if not any(scores.values()):
+        taste = await self.room_taste(channel_id, member_ids)
+        if taste.is_empty():
             return None
         context = await self.context_genres(channel_id, context_song_id)
-        candidates = await self.candidates(
-            channel_id, scores, exclude_song_ids, context
-        )
-        return self.choose(candidates, scores, rng or random.Random(), context)
+        candidates = await self.candidates(channel_id, taste, exclude_song_ids, context)
+        return self.choose(candidates, taste, rng or random.Random(), context)
 
     async def pick_switch(
         self,
@@ -197,14 +347,14 @@ class Curator(DBClient):
         if not member_ids:
             return None
         rng = rng or random.Random()
-        scores = await self.group_scores(member_ids)
+        taste = await self.room_taste(channel_id, member_ids)
         current = await self.context_genres(channel_id, current_song_id)
-        candidates = await self.candidates(channel_id, scores, exclude_song_ids)
+        candidates = await self.candidates(channel_id, taste, exclude_song_ids)
 
         elsewhere = [
             c for c in candidates if c.genre_ids and not current & set(c.genre_ids)
         ]
-        acceptable = [c for _, c in self.acceptable(elsewhere, scores)]
+        acceptable = [c for _, c in self.acceptable(elsewhere, taste)]
         genres = sorted({g for c in acceptable for g in c.genre_ids})
         if not genres:
             return None
@@ -212,7 +362,7 @@ class Curator(DBClient):
 
         pick = self.choose(
             [c for c in acceptable if genre in c.genre_ids],
-            scores,
+            taste,
             rng,
             frozenset({genre}),
         )
@@ -235,14 +385,10 @@ class Curator(DBClient):
         neutral, so this works even with no history. If the artist has no
         genres on Spotify, only their own songs qualify."""
         genres = frozenset(genre_ids)
-        scores = (
-            await self.group_scores(member_ids)
-            if member_ids
-            else {kind: {} for kind in KINDS}
-        )
+        taste = await self.room_taste(channel_id, member_ids)
         candidates = await self.candidates(
             channel_id,
-            scores,
+            taste,
             exclude_song_ids,
             genres,
             extra_artist_ids=(artist_id,),
@@ -252,48 +398,32 @@ class Curator(DBClient):
             for c in candidates
             if c.artist_id == artist_id or genres & set(c.genre_ids)
         ]
-        return self.choose(similar, scores, rng or random.Random(), genres)
+        return self.choose(similar, taste, rng or random.Random(), genres)
 
     @staticmethod
     def top_liked(scores: dict[int, float]) -> list[int]:
-        """The SEED_LIMIT best-scored items the room doesn't dislike: the
-        songs, artists and genres to look for candidates around."""
+        """The SEED_LIMIT best-scored items not disliked: the songs, artists
+        and genres to look for candidates around."""
         acceptable = [
             item for item, score in scores.items() if score > DISLIKE_THRESHOLD
         ]
         acceptable.sort(key=lambda item: scores[item], reverse=True)
         return acceptable[:SEED_LIMIT]
 
-    @classmethod
-    def score_candidate(
-        cls, candidate: Candidate, scores: dict[str, dict[int, float]]
-    ) -> float:
-        neutral = cls.NEUTRAL_SCORE
-        genre_scores = [scores["genre"].get(g, neutral) for g in candidate.genre_ids]
-        parts = {
-            "song": scores["song"].get(candidate.song_id, neutral),
-            "artist": scores["artist"].get(candidate.artist_id, neutral),
-            "genre": (
-                sum(genre_scores) / len(genre_scores) if genre_scores else neutral
-            ),
-        }
-        return sum(WEIGHTS[kind] * value for kind, value in parts.items())
+    @staticmethod
+    def score_candidate(candidate: Candidate, scores: Scores) -> float:
+        """One member's estimate for `candidate` (see `estimate`)."""
+        return estimate(candidate, scores)
 
-    @classmethod
+    @staticmethod
     def acceptable(
-        cls, candidates: list[Candidate], scores: dict[str, dict[int, float]]
+        candidates: list[Candidate], taste: RoomTaste
     ) -> list[tuple[float, Candidate]]:
-        """(score, candidate) pairs that may be played, best first: scoring
-        above DISLIKE_THRESHOLD, and not a song the room dislikes specifically
-        (its own song score below the threshold), even if its artist and
-        genres would lift its total."""
-        scored = (
-            (cls.score_candidate(c, scores), c)
-            for c in candidates
-            if scores["song"].get(c.song_id, cls.NEUTRAL_SCORE) >= DISLIKE_THRESHOLD
-        )
+        """(room score, candidate) pairs that may be played, best first; see
+        RoomTaste.evaluate for what's vetoed."""
+        scored = ((taste.evaluate(c), c) for c in candidates)
         return sorted(
-            ((s, c) for s, c in scored if s > DISLIKE_THRESHOLD),
+            ((s, c) for s, c in scored if s is not None),
             key=lambda pair: pair[0],
             reverse=True,
         )
@@ -302,22 +432,18 @@ class Curator(DBClient):
     def choose(
         cls,
         candidates: list[Candidate],
-        scores: dict[str, dict[int, float]],
+        taste: RoomTaste,
         rng: random.Random,
         context_genres: frozenset[int] = frozenset(),
     ) -> Optional[Pick]:
         """Weighted-random pick among the TOP_K best acceptable candidates.
 
-        Acceptable: scoring above DISLIKE_THRESHOLD, and not a song the room
-        dislikes specifically (its own song score below the threshold), even
-        if its artist and genres would lift its total.
-
         Cohesion first: if any acceptable candidate shares a genre with
         `context_genres` (the song being followed), only those are drawn
         from; otherwise every acceptable candidate is. Weighting by margin
-        over the threshold favors what the room likes most while keeping
+        over DISLIKE_THRESHOLD favors what the room likes most while keeping
         some variety."""
-        acceptable = cls.acceptable(candidates, scores)
+        acceptable = cls.acceptable(candidates, taste)
         cohesive = [(s, c) for s, c in acceptable if context_genres & set(c.genre_ids)]
         top = (cohesive or acceptable)[:TOP_K]
         if not top:

@@ -300,14 +300,50 @@ async def like(profiler, title, artist, genres, users, times=3, channel=10):
 
 
 @pytest.mark.asyncio
-async def test_group_scores_count_missing_members_as_neutral(profiler, pg):
+async def test_room_taste_keeps_each_members_scores(profiler, pg):
     play = await like(profiler, "Money", "Pink Floyd", [], [ALICE], times=1)
+
+    taste = await Curator(pg).room_taste(10, [ALICE, BOB])
+
+    song_id = play.track.song_id
+    assert taste.scores[ALICE]["song"][song_id] == pytest.approx(expected_after("like"))
+    assert song_id not in taste.scores[BOB]["song"]  # bob has no opinion yet
+
+
+@pytest.mark.asyncio
+async def test_curator_never_plays_what_a_present_member_dislikes(profiler, pg):
+    play = await like(profiler, "Money", "Pink Floyd", [], [ALICE], channel=99)
+    for _ in range(3):
+        await profiler.log_event(play, [BOB], "dislike")
     curator = Curator(pg)
 
-    scores = await curator.group_scores([ALICE, BOB])
+    # alone, alice gets it; with bob in the room, it's vetoed
+    assert await curator.pick_next(10, [ALICE], rng=random.Random(0)) is not None
+    assert await curator.pick_next(10, [ALICE, BOB], rng=random.Random(0)) is None
 
-    alice = expected_after("like")
-    assert scores["song"][play.track.song_id] == pytest.approx((alice + 0.5) / 2)
+
+@pytest.mark.asyncio
+async def test_curator_makes_up_for_an_underserved_member(profiler, librarian, pg):
+    # alice likes rock and disco; bob only disco
+    await like(profiler, "Money", "Pink Floyd", ["rock"], [ALICE], channel=99)
+    await like(
+        profiler, "Stayin' Alive", "Bee Gees", ["disco"], [ALICE, BOB], channel=99
+    )
+    await librarian.register_track("Night Fever", "Bee Gees", ["disco"])
+    await librarian.register_track("Time", "Pink Floyd", ["rock"])
+    # the last few songs in channel 10 were all rock: bob has been underserved
+    profiler.spotify.search_track.return_value = {
+        "name": "Money",
+        "artists": ["Pink Floyd"],
+        "genres": ["rock"],
+    }
+    for _ in range(3):
+        await profiler.record_play(1, 10, "Money", "Pink Floyd", requested_by=ALICE)
+    curator = Curator(pg)
+
+    taste = await curator.room_taste(10, [ALICE, BOB])
+
+    assert set(taste.weights) == {BOB}
 
 
 @pytest.mark.asyncio

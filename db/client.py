@@ -65,23 +65,3 @@ class DBClient(object):
                 liked = EXCLUDED.liked,
                 liked_at = EXCLUDED.liked_at;
         """
-
-    @classmethod
-    def build_group_scores_query(cls, pref_table: str) -> str:
-        """Builds the query averaging one preference table across a group.
-
-        $1::bigint[] are the members, $2 the group size. Members with no row for
-        an item count as NEUTRAL_SCORE, so one enthusiast in a big room moves
-        the average less than a whole room agreeing.
-        """
-        _, _, id_column = cls.PREFERENCE_TABLE_MAPPING[pref_table]
-        neutral = cls.NEUTRAL_SCORE
-
-        return f"""
-            SELECT {id_column} AS item_id,
-                   (SUM(preference_score) + {neutral} * ($2::int - COUNT(*)))
-                       / $2::int AS score
-            FROM {pref_table}
-            WHERE user_id = ANY($1::bigint[])
-            GROUP BY {id_column};
-        """

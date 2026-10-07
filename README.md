@@ -69,22 +69,32 @@ instead of lasting forever (see Database setup).
 When the queue is empty, the Curator (`taste/curator.py`) chooses a song for whoever is in the
 voice channel:
 
-1. **Combine the room's taste.** For every song, artist and genre, it averages the scores of
-   everyone in the channel. A member with no opinion counts as 0.5, so one person's favorite
-   moves the room less than the whole room agreeing.
-2. **Find the song to follow.** This is the song playing now, or if nothing is playing, the
+1. **Load everyone's taste.** It loads the scores of each person in the channel separately.
+   Anything a person has never reacted to counts as 0.5 for them.
+2. **Check who has been left out.** It looks at the last 5 songs played in the channel in the
+   past hour and estimates how much each person liked them. Anyone noticeably less happy with
+   them than the rest of the room counts double for the next pick, so the music drifts back
+   toward them.
+3. **Find the song to follow.** This is the song playing now, or if nothing is playing, the
    last song played in the channel in the past 30 minutes.
-3. **Gather candidates.** It looks for songs that are liked by the room, by an artist the room
-   likes, or in a genre the room likes or the followed song has. Anything the room scores below
-   the dislike threshold (0.35) is left out. Songs played in the channel in the last 2 hours,
-   and the song playing now, are skipped.
-4. **Score each candidate:** `0.5 x song score + 0.3 x artist score + 0.2 x average genre score`.
-5. **Throw out the dislikes.** A candidate must score above 0.35 overall, and a song the room
-   dislikes by name (its own song score below 0.35) is out even if its artist and genres score
-   well.
-6. **Stay close to what is playing.** If any remaining candidate shares a genre with the
+4. **Gather candidates.** It looks for songs connected to each person's own favorites (songs,
+   artists and genres they score above the dislike threshold of 0.35), plus songs in the
+   followed song's genres. Using everyone's favorites, rather than the room's average, stops
+   the person with the most history from deciding what gets considered. Songs played in the
+   channel in the last 2 hours, and the song playing now, are skipped.
+5. **Estimate each person's opinion of each candidate:**
+   `0.5 x song score + 0.3 x artist score + 0.2 x average genre score`, using that person's
+   scores.
+6. **Never play what someone dislikes.** A candidate is out if anyone present dislikes that
+   song by name (their song score is below 0.35), or would score it 0.35 or less overall. One
+   person hating a song is enough to skip it, however much the others like it.
+7. **Score for the whole room.** The room's score is the average of everyone's estimates
+   (counting left-out people double), moved halfway toward the least happy person's estimate.
+   A song everyone finds fine beats one that two people love and one barely tolerates. With
+   one person in the channel, this is simply their estimate.
+8. **Stay close to what is playing.** If any remaining candidate shares a genre with the
    followed song, only those are considered. Otherwise all of them are.
-7. **Pick one.** It takes the best 10 and picks one at random, weighted by how far each is above
+9. **Pick one.** It takes the best 10 and picks one at random, weighted by how far each is above
    0.35. Better liked songs come up more often, but the bot does not play the same top song
    every time.
 
@@ -256,6 +266,9 @@ The main knobs are constants at the top of their files:
 | `RECENT_MINUTES` | `taste/curator.py` | 120 | How long before a song can repeat in a channel. |
 | `CONTEXT_MINUTES` | `taste/curator.py` | 30 | How long the last song is followed after playback stops. |
 | `TOP_K` | `taste/curator.py` | 10 | How many of the best candidates the random pick is made from. |
+| `DISAGREEMENT_WEIGHT` | `taste/curator.py` | 0.5 | How far the room score moves from the average toward the least happy person. 0 is a plain average, 1 lets the least happy person decide. |
+| `FAIRNESS_PLAYS`, `FAIRNESS_MINUTES` | `taste/curator.py` | 5, 60 | Which recent songs are used to find people who have been left out. |
+| `FAIRNESS_MARGIN`, `UNDERSERVED_WEIGHT` | `taste/curator.py` | 0.02, 2.0 | How far below the room's average someone must be to count as left out, and how much extra they then count. |
 | `ARTISTS_PER_ROUND`, `RESEED_AFTER_DAYS` | `taste/seeder.py` | 5, 30 | Seeding batch size and how often an artist is refreshed. |
 | `NEUTRAL_SCORE` | `db/client.py` | 0.5 | The score for anything nobody has reacted to. Not a cutoff. |
 

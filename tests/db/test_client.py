@@ -17,14 +17,6 @@ def test_score_update_query_targets_table(table):
     assert "GREATEST(LEAST(" in query
 
 
-@pytest.mark.parametrize("table", list(DBClient.PREFERENCE_TABLE_MAPPING))
-def test_group_scores_query_fills_missing_members_with_neutral(table):
-    query = DBClient.build_group_scores_query(table)
-
-    assert f"FROM {table}" in query
-    assert "0.5 * ($2::int - COUNT(*))" in query
-
-
 def test_unknown_table_raises():
     with pytest.raises(KeyError):
         DBClient.build_score_update_query("nope")
