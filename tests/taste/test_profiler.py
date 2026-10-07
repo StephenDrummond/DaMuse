@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from taste.librarian import TrackIds
-from taste.profiler import EVENT_SIGNALS, PlayRecord, Profiler
+from taste.profiler import EVENT_SIGNALS, PlayRecord, Profiler, level_rate
 
 TRACK = TrackIds(song_id=10, artist_id=20, genre_ids=[30, 31])
 
@@ -224,3 +224,28 @@ def test_event_signals_are_valid():
         assert 0 < rate <= 1
     # explicit feedback should move scores more than passive listening
     assert EVENT_SIGNALS["like"][1] > EVENT_SIGNALS["listen"][1]
+
+
+@pytest.mark.asyncio
+async def test_skip_barely_moves_artist_and_genre(profiler, conn):
+    await profiler.log_event(PLAY, [1], "skip")
+
+    _, _, song, artist, genre = conn.execute.await_args_list
+    target, rate = EVENT_SIGNALS["skip"]
+    assert song.args[3:] == (rate, target)  # the song takes the full penalty
+    assert artist.args[3] == pytest.approx(rate / 3)
+    assert genre.args[3] == pytest.approx(rate / 5)
+
+
+@pytest.mark.parametrize("event", ["listen", "like", "dislike"])
+def test_other_events_move_every_level_equally(event):
+    _, rate = EVENT_SIGNALS[event]
+
+    assert level_rate(event, "song") == level_rate(event, "artist") == rate
+    assert level_rate(event, "genre") == rate
+
+
+def test_skip_rates_are_ordered():
+    # song > artist > genre: the more songs a level covers, the less one skip says
+    assert level_rate("skip", "song") > level_rate("skip", "artist")
+    assert level_rate("skip", "artist") > level_rate("skip", "genre") > 0

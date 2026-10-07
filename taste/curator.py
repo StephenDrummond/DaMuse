@@ -11,7 +11,10 @@ SEED_LIMIT = 50  # top liked songs/artists/genres used to find candidates
 CANDIDATE_LIMIT = 500
 TOP_K = 10  # pick randomly (weighted) among this many best candidates
 RECENT_MINUTES = 120  # don't repeat a song played in the channel this recently
-DISLIKE_THRESHOLD = 0.35  # never pick a song the group scores below this
+# The cutoff for "too low to play": candidates (and the songs, artists and
+# genres used to find them) must score above it. NEUTRAL_SCORE is only the
+# stand-in for things nobody in the room has reacted to, never a cutoff.
+DISLIKE_THRESHOLD = 0.35
 
 KINDS: dict[str, str] = {
     "song": "song_user_likes",
@@ -123,11 +126,15 @@ class Curator(DBClient):
         candidates = await self.candidates(channel_id, scores, exclude_song_ids)
         return self.choose(candidates, scores, rng or random.Random())
 
-    @classmethod
-    def top_liked(cls, scores: dict[int, float]) -> list[int]:
-        liked = [item for item, score in scores.items() if score > cls.NEUTRAL_SCORE]
-        liked.sort(key=lambda item: scores[item], reverse=True)
-        return liked[:SEED_LIMIT]
+    @staticmethod
+    def top_liked(scores: dict[int, float]) -> list[int]:
+        """The SEED_LIMIT best-scored items the room doesn't dislike: the
+        songs, artists and genres to look for candidates around."""
+        acceptable = [
+            item for item, score in scores.items() if score > DISLIKE_THRESHOLD
+        ]
+        acceptable.sort(key=lambda item: scores[item], reverse=True)
+        return acceptable[:SEED_LIMIT]
 
     @classmethod
     def score_candidate(
@@ -151,8 +158,12 @@ class Curator(DBClient):
         scores: dict[str, dict[int, float]],
         rng: random.Random,
     ) -> Optional[Pick]:
-        """Weighted-random pick among the TOP_K best above-neutral candidates;
-        weighting by margin over neutral keeps variety without picking duds."""
+        """Weighted-random pick among the TOP_K best candidates above
+        DISLIKE_THRESHOLD. Weighting by margin over the threshold favors what
+        the room likes most while keeping some variety.
+
+        A song the room dislikes specifically (its own song score below the
+        threshold) is out even if its artist and genres would lift its total."""
         ranked = sorted(
             (
                 (cls.score_candidate(c, scores), c)
@@ -162,11 +173,11 @@ class Curator(DBClient):
             key=lambda pair: pair[0],
             reverse=True,
         )
-        top = [(s, c) for s, c in ranked[:TOP_K] if s > cls.NEUTRAL_SCORE]
+        top = [(s, c) for s, c in ranked[:TOP_K] if s > DISLIKE_THRESHOLD]
         if not top:
             return None
         score, chosen = rng.choices(
-            top, weights=[s - cls.NEUTRAL_SCORE for s, _ in top]
+            top, weights=[s - DISLIKE_THRESHOLD for s, _ in top]
         )[0]
         return Pick(
             song_id=chosen.song_id,

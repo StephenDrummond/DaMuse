@@ -363,3 +363,19 @@ async def test_curator_excludes_songs_explicitly(profiler, pg):
         )
         is None
     )
+
+
+@pytest.mark.asyncio
+async def test_skip_penalizes_song_more_than_artist_and_genre(profiler, pg):
+    play = await profiler.record_play(1, 10, "Money", "Pink Floyd", requested_by=ALICE)
+    assert play is not None
+
+    await profiler.log_event(play, [ALICE], "skip")
+
+    track = play.track
+    song = await score(pg, "song_user_likes", "song_id", ALICE, track.song_id)
+    artist = await score(pg, "artist_user_likes", "artist_id", ALICE, track.artist_id)
+    genre = await score(pg, "genre_user_likes", "genre_id", ALICE, track.genre_ids[0])
+    assert song == pytest.approx(0.5 - 0.15 * 0.5)  # 0.425
+    assert artist == pytest.approx(0.5 - 0.05 * 0.5)  # 0.475
+    assert genre == pytest.approx(0.5 - 0.03 * 0.5)  # 0.485

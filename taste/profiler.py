@@ -19,6 +19,26 @@ EVENT_SIGNALS: dict[str, tuple[float, float]] = {
     "dislike": (0.0, 0.3),  # !dislike
 }
 
+# How much of an event's rate reaches the song's artist and genres (default: all
+# of it). A skip says "not this song, not now" far more than it says anything
+# about the artist, and genres are shared by many artists, so one skip
+# shouldn't drag down everything else in the genre.
+LEVEL_RATE_FACTORS: dict[str, dict[str, float]] = {
+    "skip": {"artist": 1 / 3, "genre": 0.2},  # 0.15 -> artist 0.05, genre 0.03
+}
+
+LEVEL_TABLES: dict[str, str] = {
+    "song": "song_user_likes",
+    "artist": "artist_user_likes",
+    "genre": "genre_user_likes",
+}
+
+
+def level_rate(event_type: str, level: str) -> float:
+    """The learning rate `event_type` applies at `level` (song/artist/genre)."""
+    _, rate = EVENT_SIGNALS[event_type]
+    return rate * LEVEL_RATE_FACTORS.get(event_type, {}).get(level, 1.0)
+
 
 @dataclass(frozen=True)
 class PlayRecord:
@@ -140,7 +160,7 @@ class Profiler(DBClient):
         artist and genre scores in one transaction."""
         if event_type not in EVENT_SIGNALS:
             raise ValueError(f"Unknown event type: {event_type}")
-        target, rate = EVENT_SIGNALS[event_type]
+        target, _ = EVENT_SIGNALS[event_type]
 
         # sorted + unique: an upsert can't touch the same row twice, and a
         # consistent row order keeps concurrent transactions from deadlocking
@@ -148,9 +168,9 @@ class Profiler(DBClient):
         if not users:
             return
         items = {
-            "song_user_likes": [play.track.song_id],
-            "artist_user_likes": [play.track.artist_id],
-            "genre_user_likes": sorted(set(play.track.genre_ids)),
+            "song": [play.track.song_id],
+            "artist": [play.track.artist_id],
+            "genre": sorted(set(play.track.genre_ids)),
         }
 
         async with self.db.transaction() as conn:
@@ -164,13 +184,13 @@ class Profiler(DBClient):
                 users,
                 event_type,
             )
-            for table, item_ids in items.items():
+            for level, item_ids in items.items():
                 if item_ids:
                     await conn.execute(
-                        self.build_score_update_query(table),
+                        self.build_score_update_query(LEVEL_TABLES[level]),
                         users,
                         item_ids,
-                        rate,
+                        level_rate(event_type, level),
                         target,
                     )
 

@@ -31,8 +31,9 @@ def test_score_candidate_weights_levels():
     assert Curator.score_candidate(c, s) == pytest.approx(0.65)
 
 
-def test_top_liked_keeps_only_above_neutral_sorted():
-    assert Curator.top_liked({1: 0.9, 2: 0.4, 3: 0.7, 4: 0.5}) == [1, 3]
+def test_top_liked_keeps_everything_above_dislike_threshold_sorted():
+    # 0.40 and 0.50 are below neutral / neutral but not disliked: still seeds
+    assert Curator.top_liked({1: 0.9, 2: 0.4, 3: 0.7, 4: 0.5, 5: 0.3}) == [1, 3, 4, 2]
 
 
 def test_top_liked_is_capped():
@@ -40,8 +41,34 @@ def test_top_liked_is_capped():
     assert len(Curator.top_liked(liked)) == SEED_LIMIT
 
 
-def test_choose_returns_none_when_nothing_above_neutral():
-    assert Curator.choose([candidate(1)], scores(), random.Random(0)) is None
+def test_choose_returns_none_when_everything_is_disliked():
+    s = scores(song={1: 0.36}, artist={100: 0.2})  # total 0.18 + 0.06 + 0.1 = 0.34
+
+    assert Curator.choose([candidate(1)], s, random.Random(0)) is None
+
+
+def test_choose_accepts_below_neutral_but_not_disliked():
+    # the real case that stopped playback: liked song, artist and genres pulled
+    # down by skips -> total 0.484, below neutral but well above the threshold
+    c = candidate(4, artist_id=3, genre_ids=[1, 2])
+    s = scores(song={4: 0.525}, artist={3: 0.454}, genre={1: 0.428, 2: 0.428})
+
+    pick = Curator.choose([c], s, random.Random(0))
+
+    assert pick is not None and pick.song_id == 4
+    assert pick.score == pytest.approx(0.5 * 0.525 + 0.3 * 0.454 + 0.2 * 0.428)
+
+
+def test_choose_prefers_higher_scores():
+    better, worse = candidate(1, artist_id=1), candidate(2, artist_id=2)
+    s = scores(song={1: 0.8, 2: 0.4}, artist={1: 0.8, 2: 0.4})
+    rng = random.Random(0)
+
+    picks = [Curator.choose([better, worse], s, rng) for _ in range(400)]
+    better_share = sum(p is not None and p.song_id == 1 for p in picks) / len(picks)
+
+    # weights are margins over the threshold: 0.71 - 0.35 vs 0.43 - 0.35
+    assert 0.75 < better_share < 0.9
 
 
 def test_choose_excludes_group_disliked_song():
