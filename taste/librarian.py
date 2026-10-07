@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 from db.db import Database
 from db.client import DBClient
@@ -38,13 +39,23 @@ class Librarian(DBClient):
         )
 
     async def register_track(
-        self, title: str, artist: str, genres: list[str]
+        self,
+        title: str,
+        artist: str,
+        genres: list[str],
+        spotify_track_id: Optional[str] = None,
+        spotify_artist_id: Optional[str] = None,
+        source: str = "played",
     ) -> TrackIds:
         """Insert the song, its (primary) artist and the artist's genres if they
         don't exist yet, link artist <-> genres, and return all their ids.
 
-        The no-op `DO UPDATE` (rather than `DO NOTHING`) is what makes
-        `RETURNING id` yield the existing row's id on conflict.
+        Spotify ids fill in rows that don't have one yet but never replace one.
+        `source` records how a *new* song got here ('played' or 'top_tracks');
+        an existing song keeps its original source.
+
+        The `DO UPDATE` (rather than `DO NOTHING`) is what makes `RETURNING id`
+        yield the existing row's id on conflict.
         """
         if type(title) is not str or type(artist) is not str:
             raise TypeError("title and artist must be str")
@@ -53,11 +64,13 @@ class Librarian(DBClient):
         async with self.db.transaction() as conn:
             artist_id = await conn.fetchval(
                 """
-                INSERT INTO artists (name) VALUES ($1)
-                ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+                INSERT INTO artists (name, spotify_id) VALUES ($1, $2)
+                ON CONFLICT (name) DO UPDATE
+                SET spotify_id = COALESCE(artists.spotify_id, EXCLUDED.spotify_id)
                 RETURNING id
                 """,
                 artist,
+                spotify_artist_id,
             )
 
             genre_ids: list[int] = []
@@ -83,12 +96,16 @@ class Librarian(DBClient):
 
             song_id = await conn.fetchval(
                 """
-                INSERT INTO songs (title, artist_id) VALUES ($1, $2)
-                ON CONFLICT (title, artist_id) DO UPDATE SET title = EXCLUDED.title
+                INSERT INTO songs (title, artist_id, spotify_id, source)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (title, artist_id) DO UPDATE
+                SET spotify_id = COALESCE(songs.spotify_id, EXCLUDED.spotify_id)
                 RETURNING id
                 """,
                 title,
                 artist_id,
+                spotify_track_id,
+                source,
             )
 
         return TrackIds(song_id=song_id, artist_id=artist_id, genre_ids=genre_ids)

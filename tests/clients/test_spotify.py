@@ -135,3 +135,82 @@ async def test_get_track_title_artist(spotify, sp):
     }
 
     assert await spotify.get_track_title_artist("id") == ("Money", "Pink Floyd")
+
+
+def artist_item(spotify_id, name, genres=()):
+    return {"id": spotify_id, "name": name, "genres": list(genres)}
+
+
+@pytest.mark.asyncio
+async def test_find_artist_prefers_exact_name(spotify, sp):
+    sp.search.return_value = {
+        "artists": {
+            "items": [
+                artist_item("a1", "Pink Floyd Tribute"),
+                artist_item("a2", "pink floyd", ["rock"]),
+            ]
+        }
+    }
+
+    assert await spotify.find_artist("Pink Floyd") == {
+        "id": "a2",
+        "name": "pink floyd",
+        "genres": ["rock"],
+    }
+    assert sp.search.call_args.kwargs["q"] == 'artist:"Pink Floyd"'
+
+
+@pytest.mark.asyncio
+async def test_find_artist_falls_back_to_top_match(spotify, sp):
+    sp.search.return_value = {"artists": {"items": [artist_item("a1", "Pinkfloyd")]}}
+
+    found = await spotify.find_artist("Pink Floyd")
+
+    assert found is not None and found["id"] == "a1"
+
+
+@pytest.mark.asyncio
+async def test_find_artist_none(spotify, sp):
+    sp.search.return_value = {"artists": {"items": []}}
+
+    assert await spotify.find_artist("Nobody") is None
+
+
+@pytest.mark.asyncio
+async def test_get_artist(spotify, sp):
+    sp.artist.return_value = artist_item("a1", "Pink Floyd", ["rock"])
+
+    assert await spotify.get_artist("a1") == {
+        "id": "a1",
+        "name": "Pink Floyd",
+        "genres": ["rock"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_artist_top_tracks(spotify, sp):
+    sp.artist_top_tracks.return_value = {
+        "tracks": [
+            {"id": "t1", "name": "Money", "artists": [{"id": "a1"}]},
+            {"id": "t2", "name": "Duet", "artists": [{"id": "a9"}, {"id": "a1"}]},
+        ]
+    }
+
+    tracks = await spotify.artist_top_tracks("a1", market="GB")
+
+    assert tracks == [
+        {"id": "t1", "name": "Money", "artist_ids": ["a1"]},
+        {"id": "t2", "name": "Duet", "artist_ids": ["a9", "a1"]},
+    ]
+    assert sp.artist_top_tracks.call_args.kwargs == {"country": "GB"}
+
+
+@pytest.mark.asyncio
+async def test_search_track_includes_spotify_ids(spotify, sp):
+    sp.search.return_value = mock_track_result
+    sp.artist.return_value = mock_track_artist_info
+
+    info = await spotify.search_track("Money")
+
+    assert info is not None
+    assert info["artist_ids"] == ["artist_id_2"]

@@ -26,7 +26,13 @@ def profiler(db, spotify, librarian):
     return Profiler(db, spotify, librarian)
 
 
-SPOTIFY_INFO = {"name": "Money", "artists": ["Pink Floyd"], "genres": ["rock"]}
+SPOTIFY_INFO = {
+    "id": "trk1",
+    "name": "Money",
+    "artists": ["Pink Floyd"],
+    "artist_ids": ["art1"],
+    "genres": ["rock"],
+}
 
 
 def test_lookup_key_normalizes():
@@ -88,7 +94,13 @@ async def test_resolve_track_registers_and_caches(spotify, profiler, db, librari
         assert await profiler.resolve_track("Money", "Pink Floyd") == TRACK
 
     search.assert_awaited_once_with("Money", "Pink Floyd")
-    librarian.register_track.assert_awaited_once_with("Money", "Pink Floyd", ["rock"])
+    librarian.register_track.assert_awaited_once_with(
+        "Money",
+        "Pink Floyd",
+        ["rock"],
+        spotify_track_id="trk1",
+        spotify_artist_id="art1",
+    )
     cache_args = db.execute.await_args.args
     assert "track_lookups" in cache_args[0]
     assert cache_args[1:] == ("pink floyd|money", 10)

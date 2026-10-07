@@ -80,7 +80,8 @@ async def test_register_track_returns_ids(db, conn):
     assert "artist_genres" in link_args[0]
     assert link_args[1:] == (7, [3, 4])
     # song keyed on (title, artist_id)
-    assert conn.fetchval.await_args_list[1].args[1:] == ("Money", 7)
+    # song keyed on (title, artist_id); no Spotify id given; played by default
+    assert conn.fetchval.await_args_list[1].args[1:] == ("Money", 7, None, "played")
 
 
 @pytest.mark.asyncio
@@ -125,3 +126,23 @@ async def test_get_track_ids_missing(mock_db):
     mock_db.fetch_row.return_value = None
 
     assert await Librarian(mock_db).get_track_ids(1) is None
+
+
+@pytest.mark.asyncio
+async def test_register_track_passes_spotify_ids_and_source(db, conn):
+    conn.fetchval.side_effect = [7, 42]
+
+    await Librarian(db).register_track(
+        "Money",
+        "Pink Floyd",
+        [],
+        spotify_track_id="trk",
+        spotify_artist_id="art",
+        source="top_tracks",
+    )
+
+    artist_call, song_call = conn.fetchval.await_args_list
+    assert artist_call.args[1:] == ("Pink Floyd", "art")
+    assert "COALESCE(artists.spotify_id" in artist_call.args[0]  # never overwrites
+    assert song_call.args[1:] == ("Money", 7, "trk", "top_tracks")
+    assert "COALESCE(songs.spotify_id" in song_call.args[0]

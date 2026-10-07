@@ -6,6 +6,8 @@ Table users {
 Table artists {
   id integer [primary key]
   name varchar [not null, unique]
+  spotify_id varchar
+  seeded_at timestamptz [note: "last top-tracks seeding; NULL = never"]
 }
 
 Table genres {
@@ -25,6 +27,8 @@ Table songs {
   id integer [primary key]
   title varchar [not null]
   artist_id integer [not null]
+  spotify_id varchar
+  source varchar [not null, default: 'played', note: "played | top_tracks"]
 
   indexes {
     (title, artist_id) [unique]

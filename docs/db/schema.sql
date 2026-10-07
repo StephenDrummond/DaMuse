@@ -9,7 +9,10 @@ CREATE TABLE users (
 -- Artists table
 CREATE TABLE artists (
     id SERIAL PRIMARY KEY,
-    name VARCHAR NOT NULL UNIQUE
+    name VARCHAR NOT NULL UNIQUE,
+    spotify_id VARCHAR,
+    -- when the worker last added this artist's top tracks (NULL = never)
+    seeded_at TIMESTAMPTZ
 );
 
 -- Genres table
@@ -33,6 +36,9 @@ CREATE TABLE songs (
     id SERIAL PRIMARY KEY,
     title VARCHAR NOT NULL,
     artist_id INT NOT NULL,
+    spotify_id VARCHAR,
+    -- 'played' (someone played it) or 'top_tracks' (seeded from Spotify)
+    source VARCHAR NOT NULL DEFAULT 'played',
     FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE,
     UNIQUE (title, artist_id)
 );
@@ -137,3 +143,7 @@ CREATE TABLE audio_jobs (
 -- Workers scan only claimable rows, oldest first.
 CREATE INDEX audio_jobs_claimable_idx ON audio_jobs (created_at)
     WHERE status IN ('pending', 'running');
+
+-- Spotify seeding (see migrations/003_spotify_seeding.sql)
+CREATE INDEX artists_seeded_at_idx ON artists (seeded_at NULLS FIRST);
+CREATE INDEX songs_spotify_id_idx ON songs (spotify_id);

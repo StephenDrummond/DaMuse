@@ -100,7 +100,11 @@ class Profiler(DBClient):
         track = None
         if info and info.get("artists"):
             track = await self.librarian.register_track(
-                info["name"], info["artists"][0], info.get("genres", [])
+                info["name"],
+                info["artists"][0],
+                info.get("genres", []),
+                spotify_track_id=info.get("id"),
+                spotify_artist_id=(info.get("artist_ids") or [None])[0],
             )
 
         await self.db.execute(

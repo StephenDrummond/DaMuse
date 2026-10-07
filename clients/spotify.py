@@ -93,8 +93,10 @@ class SpotifyClient:
 
         return {
             "type": "track",
+            "id": track.get("id"),
             "name": track["name"],
             "artists": [a["name"] for a in track["artists"]],
+            "artist_ids": [a.get("id") for a in track["artists"]],
             "album": track["album"]["name"],
             "release_date": track["album"]["release_date"],
             "duration_ms": track["duration_ms"],
@@ -113,6 +115,41 @@ class SpotifyClient:
             return None
         return track["name"], track["artists"][0]["name"]
 
+    async def find_artist(self, name: str) -> Optional[Dict[str, Any]]:
+        """The artist named exactly `name` (case-insensitive), else Spotify's
+        top match, as {"id", "name", "genres"}; None if nothing comes back."""
+        results: Dict[str, Any] = await asyncio.to_thread(
+            self.sp.search, q=f'artist:"{name}"', type="artist", limit=5
+        )
+        artists = [a for a in results.get("artists", {}).get("items", []) if a]
+        if not artists:
+            return None
+        exact = [a for a in artists if a["name"].casefold() == name.casefold()]
+        return _artist_summary((exact or artists)[0])
+
+    async def get_artist(self, spotify_id: str) -> Optional[Dict[str, Any]]:
+        """{"id", "name", "genres"} for a Spotify artist id."""
+        artist: Dict[str, Any] = await asyncio.to_thread(self.sp.artist, spotify_id)
+        return _artist_summary(artist) if artist else None
+
+    async def artist_top_tracks(
+        self, spotify_id: str, market: str = "US"
+    ) -> List[Dict[str, Any]]:
+        """The artist's most popular tracks (up to 10) in `market`, each as
+        {"id", "name", "artist_ids"}; artist_ids[0] is the track's main artist."""
+        data: Dict[str, Any] = await asyncio.to_thread(
+            self.sp.artist_top_tracks, spotify_id, country=market
+        )
+        return [
+            {
+                "id": track.get("id"),
+                "name": track["name"],
+                "artist_ids": [a.get("id") for a in track.get("artists", [])],
+            }
+            for track in data.get("tracks", [])
+            if track
+        ]
+
     async def get_spotify_info(self, search_query: str) -> Optional[Dict[str, Any]]:
         """Search Spotify for an artist or track and return data."""
         try:
@@ -129,3 +166,11 @@ class SpotifyClient:
         except Exception:
             logger.exception("Error fetching Spotify data for %r", search_query)
             return None
+
+
+def _artist_summary(artist: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": artist["id"],
+        "name": artist["name"],
+        "genres": artist.get("genres", []),
+    }

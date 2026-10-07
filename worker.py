@@ -1,4 +1,9 @@
-"""Audio cache worker: turns queued audio_jobs into Ogg Opus files in S3.
+"""Background worker for the bot. Two jobs:
+
+- Audio cache: turns queued audio_jobs into Ogg Opus files in S3 (needs
+  AUDIO_BUCKET and ffmpeg).
+- Song seeding: adds known artists' Spotify top tracks to the song registry,
+  so the Curator has songs to pick beyond what's been played (taste/seeder.py).
 
 Run alongside the bot (any number of copies, on any machine with ffmpeg and
 access to the DB + bucket):
@@ -16,10 +21,13 @@ import sys
 import tempfile
 
 from clients.audio_store import AudioStore
+from clients.spotify import SpotifyClient
 from config import Settings
 from db.db import Database
 from audio.audio_jobs import NOTIFY_CHANNEL, AudioJob, AudioJobs
 from audio.encoder import Encoder, PermanentEncodeError
+from taste.librarian import Librarian
+from taste.seeder import Seeder
 
 POLL_SECONDS = 30
 
@@ -71,25 +79,35 @@ class Worker:
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     settings = Settings.from_env()
-    store = AudioStore.from_settings(settings.audio, settings.aws_region)
-    if store is None:
-        sys.exit("AUDIO_BUCKET must be set for the worker")
+    if not (settings.spotify_client_id and settings.spotify_client_secret):
+        sys.exit("SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET must be set")
 
     db = Database(settings.database)
     await db.init_pool()
-    worker = Worker(
-        AudioJobs(db),
-        store,
-        Encoder.from_settings(settings.audio, settings.ffmpeg_path),
-    )
+    spotify = SpotifyClient(settings.spotify_client_id, settings.spotify_client_secret)
+    seeder = Seeder(db, spotify, Librarian(db))
+    store = AudioStore.from_settings(settings.audio, settings.aws_region)
 
-    wake = asyncio.Event()
-    concurrency = settings.audio.worker_concurrency
     try:
+        if store is None:
+            logger.warning("Audio caching off (no AUDIO_BUCKET); seeding songs only")
+            await seeder.run_forever()
+            return
+
+        worker = Worker(
+            AudioJobs(db),
+            store,
+            Encoder.from_settings(settings.audio, settings.ffmpeg_path),
+        )
+        wake = asyncio.Event()
+        concurrency = settings.audio.worker_concurrency
         async with db.connection() as listener:
             await listener.add_listener(NOTIFY_CHANNEL, lambda *_: wake.set())
-            logger.info("Worker started with %d slots", concurrency)
-            await asyncio.gather(*(worker.run_slot(wake) for _ in range(concurrency)))
+            logger.info("Worker started: %d cache slots + song seeding", concurrency)
+            await asyncio.gather(
+                seeder.run_forever(),
+                *(worker.run_slot(wake) for _ in range(concurrency)),
+            )
     finally:
         await db.close()
 
