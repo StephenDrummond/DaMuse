@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 from botocore.exceptions import ClientError
 
-from api.audio_store import AudioStore, CachedAudio
+from clients.audio_store import AudioStore, CachedAudio
 
 
 @pytest.fixture

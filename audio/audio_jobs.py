@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from .db_client import DBClient
+from db.client import DBClient
 
 # Postgres NOTIFY channel workers LISTEN on to pick up new jobs immediately.
 NOTIFY_CHANNEL = "audio_jobs"

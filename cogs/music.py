@@ -5,10 +5,10 @@ import discord
 from discord.ext import commands
 
 from app import DaMuseBot
-from music_state import inactivity
-from music_state.controller import PlaybackController
-from music_state.ogg_source import OggOpusSource
-from utils.audio_resolver import Playable
+from playback import inactivity
+from playback.controller import PlaybackController
+from playback.ogg_source import OggOpusSource
+from audio.audio_resolver import Playable
 
 logger = logging.getLogger(__name__)
 

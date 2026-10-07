@@ -7,16 +7,16 @@ from dataclasses import dataclass
 import discord
 from discord.ext import commands
 
-from api.audio_store import AudioStore
-from api.spotify import SpotifyClient
-from api.youtube import YouTubeClient
+from clients.audio_store import AudioStore
+from clients.spotify import SpotifyClient
+from clients.youtube import YouTubeClient
 from config import Settings
 from db.db import Database
-from utils.audio_jobs import AudioJobs
-from utils.audio_resolver import AudioResolver
-from utils.curator import Curator
-from utils.librarian import Librarian
-from utils.profiler import Profiler
+from audio.audio_jobs import AudioJobs
+from audio.audio_resolver import AudioResolver
+from taste.curator import Curator
+from taste.librarian import Librarian
+from taste.profiler import Profiler
 
 logger = logging.getLogger(__name__)
 

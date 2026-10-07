@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from api import youtube
-from api.youtube import (
+from clients import youtube
+from clients.youtube import (
     YouTubeClient,
     audio_key,
     is_url,

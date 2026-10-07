@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from music_state.controller import MAX_START_ATTEMPTS, PlaybackController
-from utils.audio_resolver import Playable, Track
-from utils.curator import Pick
-from utils.librarian import TrackIds
-from utils.profiler import PlayRecord
+from playback.controller import MAX_START_ATTEMPTS, PlaybackController
+from audio.audio_resolver import Playable, Track
+from taste.curator import Pick
+from taste.librarian import TrackIds
+from taste.profiler import PlayRecord
 
 CHANNEL_ID = 10
 ALICE, BOB, BOT = 1, 2, 99

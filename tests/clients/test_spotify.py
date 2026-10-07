@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from api.spotify import SpotifyClient, spotify_track_id
+from clients.spotify import SpotifyClient, spotify_track_id
 
 # Sample mock data
 mock_artist_result = {

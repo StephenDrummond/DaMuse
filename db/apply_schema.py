@@ -14,12 +14,7 @@ import sys
 from config import Settings
 from db.db import Database
 
-SCHEMA = (
-    pathlib.Path(__file__).parents[1]
-    / "Documentation"
-    / "db documentation"
-    / "schema.sql"
-)
+SCHEMA = pathlib.Path(__file__).parents[1] / "docs" / "db" / "schema.sql"
 
 TABLES_QUERY = (
     "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename"

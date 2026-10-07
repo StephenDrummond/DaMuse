@@ -18,12 +18,7 @@ import pytest_asyncio
 from config import DatabaseSettings
 from db.db import Database
 
-SCHEMA = (
-    pathlib.Path(__file__).parents[2]
-    / "Documentation"
-    / "db documentation"
-    / "schema.sql"
-)
+SCHEMA = pathlib.Path(__file__).parents[2] / "docs" / "db" / "schema.sql"
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL")
 
 HERE = pathlib.Path(__file__).parent

@@ -15,11 +15,11 @@ import logging
 import sys
 import tempfile
 
-from api.audio_store import AudioStore
+from clients.audio_store import AudioStore
 from config import Settings
 from db.db import Database
-from utils.audio_jobs import NOTIFY_CHANNEL, AudioJob, AudioJobs
-from utils.encoder import Encoder, PermanentEncodeError
+from audio.audio_jobs import NOTIFY_CHANNEL, AudioJob, AudioJobs
+from audio.encoder import Encoder, PermanentEncodeError
 
 POLL_SECONDS = 30
 

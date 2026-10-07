@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from utils.db_client import DBClient
+from db.client import DBClient
 
 
 @pytest.mark.parametrize("table", list(DBClient.PREFERENCE_TABLE_MAPPING))

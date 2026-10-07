@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import worker
-from utils.audio_jobs import AudioJob
-from utils.encoder import PermanentEncodeError
+from audio.audio_jobs import AudioJob
+from audio.encoder import PermanentEncodeError
 
 JOB = AudioJob(audio_key="youtube/abc", source_url="u", attempts=1)
 

@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from db.schedule_decay_preferences import DECAY_FUNCTION, DECAY_RATE
-from utils.curator import Curator
-from utils.librarian import Librarian, TrackIds
-from utils.profiler import EVENT_SIGNALS, PlayRecord, Profiler
+from taste.curator import Curator
+from taste.librarian import Librarian, TrackIds
+from taste.profiler import EVENT_SIGNALS, PlayRecord, Profiler
 
 ALICE, BOB, CAROL = 1001, 1002, 1003
 

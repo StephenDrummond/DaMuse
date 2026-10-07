@@ -1,6 +1,6 @@
 import pytest
 
-from utils.audio_jobs import MAX_ATTEMPTS, NOTIFY_CHANNEL, AudioJob, AudioJobs
+from audio.audio_jobs import MAX_ATTEMPTS, NOTIFY_CHANNEL, AudioJob, AudioJobs
 
 
 @pytest.mark.asyncio

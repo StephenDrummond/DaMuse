@@ -60,10 +60,11 @@ sequenceDiagram
 | Layer | What lives there |
 |---|---|
 | `cogs/` | Discord-facing commands and listeners: `!play` / `!skip` / `!stop` / `!like` / `!dislike`, and registering members as they join voice |
-| `utils/` | `Curator` (group taste and picks), `Profiler` (plays, events, scoring), `Librarian` (registers users / songs / artists / genres) |
-| `music_state/` | Per-guild playback state and the inactivity timer |
-| `db/` | Async Postgres access (`asyncpg`), plus the decay-job installer |
-| `api/` | Spotify Web API (metadata), `yt-dlp` (finding and streaming audio), and the S3 audio cache |
+| `taste/` | `Curator` (group taste and picks), `Profiler` (plays, events, scoring), `Librarian` (registers users / songs / artists / genres) |
+| `playback/` | Per-guild playback state, the Ogg Opus source, and the inactivity timer |
+| `audio/` | Finding playable audio for a request, the S3 cache job queue, and the encoder the worker uses |
+| `db/` | Async Postgres access (`asyncpg`), the shared query base class, and the decay-job installer |
+| `clients/` | Spotify Web API (metadata), `yt-dlp` (finding and streaming audio), and the S3 audio cache |
 | `worker.py` | Downloads songs, converts them to Ogg Opus, and uploads them to S3 |
 
 Built entirely `async`: `discord.py` for the gateway, `asyncpg` for Postgres, blocking Spotify

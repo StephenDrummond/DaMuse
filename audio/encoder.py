@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 import yt_dlp  # type: ignore
 
-from api.youtube import parse_track_hint, ytdl_format_options
+from clients.youtube import parse_track_hint, ytdl_format_options
 from config import AudioSettings
 
 FFMPEG_TIMEOUT_SECONDS = 600

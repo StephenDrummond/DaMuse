@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 
 from app import DaMuseBot
-from utils.librarian import Librarian
+from taste.librarian import Librarian
 
 
 class ChannelEvents(commands.Cog):

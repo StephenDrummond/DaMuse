@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from db.db import Database
-from .db_client import DBClient
+from db.client import DBClient
 
 
 @dataclass(frozen=True)

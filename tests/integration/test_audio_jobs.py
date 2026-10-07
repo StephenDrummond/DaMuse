@@ -5,7 +5,7 @@ import asyncio
 
 import pytest
 
-from utils.audio_jobs import MAX_ATTEMPTS, NOTIFY_CHANNEL, AudioJobs
+from audio.audio_jobs import MAX_ATTEMPTS, NOTIFY_CHANNEL, AudioJobs
 
 
 @pytest.fixture

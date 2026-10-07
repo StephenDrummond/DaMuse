@@ -2,10 +2,10 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from api.audio_store import AudioStore, CachedAudio
-from api.spotify import SpotifyClient, spotify_track_id
-from api.youtube import VideoInfo, YouTubeClient, is_url
-from utils.audio_jobs import AudioJobs
+from clients.audio_store import AudioStore, CachedAudio
+from clients.spotify import SpotifyClient, spotify_track_id
+from clients.youtube import VideoInfo, YouTubeClient, is_url
+from audio.audio_jobs import AudioJobs
 
 logger = logging.getLogger(__name__)
 

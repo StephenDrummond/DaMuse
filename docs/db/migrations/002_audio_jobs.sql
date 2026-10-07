@@ -1,5 +1,5 @@
 -- 002: queue of songs to download, encode to Ogg Opus and upload to S3.
--- Consumed by worker.py (see utils/audio_jobs.py for the state machine).
+-- Consumed by worker.py (see audio/audio_jobs.py for the state machine).
 
 BEGIN;
 

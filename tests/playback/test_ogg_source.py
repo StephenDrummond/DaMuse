@@ -5,8 +5,8 @@ import urllib.error
 
 import pytest
 
-from music_state import ogg_source
-from music_state.ogg_source import BackgroundDownload, OggOpusSource
+from playback import ogg_source
+from playback.ogg_source import BackgroundDownload, OggOpusSource
 
 
 def ogg_page(packets: list[bytes], pagenum: int, continued: bool = False) -> bytes:

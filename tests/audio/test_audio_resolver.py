@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from api.audio_store import CachedAudio
-from api.youtube import STREAM_TTL_SECONDS, VideoInfo, VideoRef
-from utils.audio_resolver import AudioResolver, Playable, Track
+from clients.audio_store import CachedAudio
+from clients.youtube import STREAM_TTL_SECONDS, VideoInfo, VideoRef
+from audio.audio_resolver import AudioResolver, Playable, Track
 
 REF = VideoRef(audio_key="youtube/abc", url="https://www.youtube.com/watch?v=abc")
 CACHED = CachedAudio(

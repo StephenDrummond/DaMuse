@@ -2,9 +2,9 @@ import logging
 from dataclasses import dataclass
 from typing import Optional
 
-from api.spotify import SpotifyClient
-from utils.librarian import Librarian, TrackIds
-from .db_client import DBClient
+from clients.spotify import SpotifyClient
+from taste.librarian import Librarian, TrackIds
+from db.client import DBClient
 
 logger = logging.getLogger(__name__)
 

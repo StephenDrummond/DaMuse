@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from utils.librarian import TrackIds
-from utils.profiler import EVENT_SIGNALS, PlayRecord, Profiler
+from taste.librarian import TrackIds
+from taste.profiler import EVENT_SIGNALS, PlayRecord, Profiler
 
 TRACK = TrackIds(song_id=10, artist_id=20, genre_ids=[30, 31])
 

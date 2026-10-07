@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from config import AudioSettings
-from utils import encoder
-from utils.encoder import Encoder, PermanentEncodeError
+from audio import encoder
+from audio.encoder import Encoder, PermanentEncodeError
 
 MAX_DURATION_SECONDS = 600
 ENCODER = Encoder("ffmpeg", max_duration_seconds=MAX_DURATION_SECONDS)

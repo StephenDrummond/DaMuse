@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from utils.librarian import Librarian, TrackIds
+from taste.librarian import Librarian, TrackIds
 
 
 @pytest.fixture

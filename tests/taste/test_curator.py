@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from utils.curator import Candidate, Curator, Pick, SEED_LIMIT, TOP_K
+from taste.curator import Candidate, Curator, Pick, SEED_LIMIT, TOP_K
 
 
 def candidate(song_id, artist_id=100, genre_ids=()):

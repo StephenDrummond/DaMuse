@@ -3,14 +3,14 @@ import random
 from dataclasses import dataclass
 from typing import Optional
 
-from utils.db_client import DBClient
+from db.client import DBClient
 
 # How much each level of taste counts toward a candidate song's group score.
 WEIGHTS: dict[str, float] = {"song": 0.5, "artist": 0.3, "genre": 0.2}
 SEED_LIMIT = 50  # top liked songs/artists/genres used to find candidates
 CANDIDATE_LIMIT = 500
 TOP_K = 10  # pick randomly (weighted) among this many best candidates
-RECENT_MINUTES = 5  # don't repeat a song played in the channel this recently
+RECENT_MINUTES = 120  # don't repeat a song played in the channel this recently
 DISLIKE_THRESHOLD = 0.35  # never pick a song the group scores below this
 
 KINDS: dict[str, str] = {

@@ -15,9 +15,9 @@ from typing import (
 
 from discord.abc import Messageable
 
-from utils.audio_resolver import AudioResolver, Playable, Track
-from utils.curator import Curator, Pick
-from utils.profiler import PlayRecord, Profiler
+from audio.audio_resolver import AudioResolver, Playable, Track
+from taste.curator import Curator, Pick
+from taste.profiler import PlayRecord, Profiler
 
 logger = logging.getLogger(__name__)
 
