@@ -262,7 +262,13 @@ class PlaybackController:
                     exclude.append(record.track.song_id)
 
             pick = await self.curator.pick_next(
-                channel.id, listener_ids(channel), exclude_song_ids=exclude
+                channel.id,
+                listener_ids(channel),
+                exclude_song_ids=exclude,
+                # follow on from the song playing now; without one (nothing
+                # identified, or picking after a song ended) the Curator
+                # uses the channel's last play
+                context_song_id=exclude[0] if exclude else None,
             )
             if pick is None:
                 return None

@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from taste.curator import Candidate, Curator, Pick, SEED_LIMIT, TOP_K
+from taste.curator import CONTEXT_MINUTES, Candidate, Curator, Pick, SEED_LIMIT, TOP_K
 
 
 def candidate(song_id, artist_id=100, genre_ids=()):
@@ -166,3 +166,88 @@ async def test_pick_next_passes_exclusions_to_candidates(db):
     await Curator(db).pick_next(42, [5], exclude_song_ids=[7])
 
     assert db.fetch.await_args_list[3].args[7] == [7]
+
+
+# --- cohesion: prefer songs sharing a genre with what's playing -------------
+
+ROCK, PROG, DISCO = 1, 2, 3
+
+
+def test_choose_prefers_genre_matches_over_higher_scores():
+    rock = candidate(1, artist_id=1, genre_ids=[ROCK])
+    disco = candidate(2, artist_id=2, genre_ids=[DISCO])
+    s = scores(song={1: 0.55, 2: 0.95})  # the room likes the disco song more
+
+    picks = {
+        Curator.choose([rock, disco], s, random.Random(seed), frozenset({ROCK, PROG}))
+        for seed in range(50)
+    }
+
+    assert {p.song_id for p in picks if p} == {1}
+    assert all(p is not None and p.cohesive for p in picks)
+
+
+def test_choose_falls_back_when_no_genre_match_is_acceptable():
+    disliked_rock = candidate(1, artist_id=1, genre_ids=[ROCK])
+    disco = candidate(2, artist_id=2, genre_ids=[DISCO])
+    s = scores(song={1: 0.2, 2: 0.8})  # the only rock song is disliked
+
+    pick = Curator.choose(
+        [disliked_rock, disco], s, random.Random(0), frozenset({ROCK})
+    )
+
+    assert pick is not None and pick.song_id == 2
+    assert pick.cohesive is False  # music keeps going, just without a match
+
+
+def test_choose_without_context_uses_every_acceptable_candidate():
+    rock = candidate(1, artist_id=1, genre_ids=[ROCK])
+    disco = candidate(2, artist_id=2, genre_ids=[DISCO])
+    s = scores(song={1: 0.8, 2: 0.8})
+
+    picks = {
+        Curator.choose([rock, disco], s, random.Random(seed)) for seed in range(50)
+    }
+
+    assert {p.song_id for p in picks if p} == {1, 2}
+    assert not any(p.cohesive for p in picks if p)
+
+
+def test_choose_draws_only_from_matches_even_below_neutral():
+    meh_rock = candidate(1, artist_id=1, genre_ids=[ROCK])
+    great_disco = candidate(2, artist_id=2, genre_ids=[DISCO])
+    s = scores(song={1: 0.42, 2: 1.0}, artist={1: 0.45})
+
+    pick = Curator.choose(
+        [meh_rock, great_disco], s, random.Random(0), frozenset({ROCK})
+    )
+
+    assert pick is not None and pick.song_id == 1
+
+
+@pytest.mark.asyncio
+async def test_context_genres_uses_given_song(db):
+    db.fetch_val.return_value = [ROCK, PROG]
+
+    assert await Curator(db).context_genres(42, song_id=7) == {ROCK, PROG}
+    assert db.fetch_val.await_args.args[1:] == (7, 42, CONTEXT_MINUTES)
+
+
+@pytest.mark.asyncio
+async def test_context_genres_nothing_to_follow(db):
+    db.fetch_val.return_value = []
+
+    assert await Curator(db).context_genres(42) == frozenset()
+
+
+@pytest.mark.asyncio
+async def test_pick_next_passes_context_to_candidates(db):
+    db.fetch_val.return_value = [ROCK]
+    db.fetch.side_effect = [[{"item_id": 7, "score": 0.9}], [], [], []]
+
+    await Curator(db).pick_next(42, [5], context_song_id=3)
+
+    candidate_args = db.fetch.await_args_list[3].args
+    assert candidate_args[3] == [ROCK]  # context genres seed the search
+    assert candidate_args[8] == [ROCK]  # and rank first
+    assert db.fetch_val.await_args.args[1] == 3

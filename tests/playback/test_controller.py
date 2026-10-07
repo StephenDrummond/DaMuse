@@ -484,7 +484,10 @@ async def test_next_pick_is_prepared_while_song_plays(
 
     # picked and resolved before "a" ends, excluding the song playing now
     assert curator.pick_next.await_count == 1
-    assert curator.pick_next.await_args.kwargs == {"exclude_song_ids": [1]}
+    assert curator.pick_next.await_args.kwargs == {
+        "exclude_song_ids": [1],
+        "context_song_id": 1,  # the next pick follows on from the playing song
+    }
     resolver.resolve.assert_awaited_once()
 
     voice.finish()
@@ -564,4 +567,7 @@ async def test_unidentified_song_is_not_excluded(controller, curator, profiler):
     await controller.enqueue(track("a"))
     await controller.settle()
 
-    assert curator.pick_next.await_args.kwargs == {"exclude_song_ids": []}
+    assert curator.pick_next.await_args.kwargs == {
+        "exclude_song_ids": [],
+        "context_song_id": None,  # Curator falls back to the channel's last play
+    }

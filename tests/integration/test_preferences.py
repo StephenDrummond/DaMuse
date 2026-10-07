@@ -379,3 +379,48 @@ async def test_skip_penalizes_song_more_than_artist_and_genre(profiler, pg):
     assert song == pytest.approx(0.5 - 0.15 * 0.5)  # 0.425
     assert artist == pytest.approx(0.5 - 0.05 * 0.5)  # 0.475
     assert genre == pytest.approx(0.5 - 0.03 * 0.5)  # 0.485
+
+
+@pytest.mark.asyncio
+async def test_curator_follows_the_genre_of_the_last_play(profiler, librarian, pg):
+    # Alice likes both a rock and a disco song equally
+    await like(profiler, "Money", "Pink Floyd", ["rock"], [ALICE], channel=99)
+    await like(profiler, "Stayin' Alive", "Bee Gees", ["disco"], [ALICE], channel=99)
+    await librarian.register_track("Time", "Pink Floyd", ["rock"])
+    await librarian.register_track("Comfortably Numb", "Pink Floyd", ["rock"])
+    await librarian.register_track("Night Fever", "Bee Gees", ["disco"])
+    curator = Curator(pg)
+
+    # a rock song was just played in channel 10
+    profiler.spotify.search_track.return_value = {
+        "name": "Money",
+        "artists": ["Pink Floyd"],
+        "genres": ["rock"],
+    }
+    await profiler.record_play(1, 10, "Money", "Pink Floyd", requested_by=ALICE)
+
+    picks = set()
+    for seed in range(30):
+        pick = await curator.pick_next(10, [ALICE], rng=random.Random(seed))
+        assert pick is not None and pick.cohesive
+        picks.add(pick.artist)
+    assert picks == {"Pink Floyd"}  # stays with rock, never jumps to disco
+
+
+@pytest.mark.asyncio
+async def test_curator_context_comes_from_the_playing_song(profiler, librarian, pg):
+    await like(profiler, "Money", "Pink Floyd", ["rock"], [ALICE], channel=99)
+    disco = await like(
+        profiler, "Stayin' Alive", "Bee Gees", ["disco"], [ALICE], channel=99
+    )
+    await librarian.register_track("Night Fever", "Bee Gees", ["disco"])
+
+    pick = await Curator(pg).pick_next(
+        10,
+        [ALICE],
+        rng=random.Random(0),
+        exclude_song_ids=[disco.track.song_id],
+        context_song_id=disco.track.song_id,
+    )
+
+    assert pick is not None and pick.title == "Night Fever" and pick.cohesive
