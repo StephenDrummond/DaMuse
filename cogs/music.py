@@ -67,12 +67,28 @@ class Music(commands.Cog):
             self.controllers[guild.id] = controller
         return controller
 
-    @commands.command()
+    @commands.command(
+        brief="Play or queue a song. On its own, I pick songs for the room.",
+        usage="[song]",
+    )
     async def play(
         self, ctx: commands.Context, *, search: Optional[str] = None
     ) -> None:
-        """Play a song by search term, YouTube URL or Spotify track link; with
-        nothing after it, play songs picked for everyone in the channel."""
+        """Play a song, or let me pick songs for the room.
+
+        With a song, I play it now, or queue it if something is already
+        playing. A search term, a YouTube link or a Spotify track link all
+        work. Songs people ask for always play before my own picks.
+
+        With nothing after it, I pick songs for the combined taste of everyone
+        in your voice channel.
+
+        You need to be in a voice channel.
+
+        Examples:
+        - `!play bulls on parade`
+        - `!play https://youtu.be/3L4YrGaR8E4`
+        - `!play`"""
         voice_state = getattr(ctx.author, "voice", None)
         if ctx.guild is None or voice_state is None or voice_state.channel is None:
             await ctx.send("You must be in a voice channel to play music!")
@@ -115,12 +131,26 @@ class Music(commands.Cog):
         if await controller.enqueue(track):
             await ctx.send(f"Queued **{track.title}**")
 
-    @commands.command()
+    @commands.command(
+        brief="Jump to a different genre, or to music like an artist.",
+        usage="[artist]",
+    )
     async def switch(
         self, ctx: commands.Context, *, artist: Optional[str] = None
     ) -> None:
-        """Change genre: `!switch` jumps to a random new genre, and
-        `!switch <artist>` jumps to songs like that artist."""
+        """Change what kind of music I'm playing.
+
+        On its own, I jump to a random genre that has nothing in common with
+        the current song, and keep playing in that genre.
+
+        With an artist, I jump to a song by that artist or one in the same
+        genres. This works for artists nobody has played yet.
+
+        You need to be in a voice channel.
+
+        Examples:
+        - `!switch`
+        - `!switch Daft Punk`"""
         voice_state = getattr(ctx.author, "voice", None)
         if ctx.guild is None or voice_state is None or voice_state.channel is None:
             await ctx.send("You must be in a voice channel to switch the music!")
@@ -159,30 +189,36 @@ class Music(commands.Cog):
                     "Play some different music, or try `!switch <artist>`."
                 )
 
-    @commands.command()
+    @commands.command(brief="Skip the current song.")
     async def skip(self, ctx: commands.Context) -> None:
-        """Skip the current song (counts against it for whoever skipped)."""
+        """Skip the current song. This counts as a mild dislike from you, so
+        I'll pick songs like it a little less for you."""
         controller = self.controllers.get(ctx.guild.id) if ctx.guild else None
         if controller is None or not controller.skip(ctx.author.id):
             await ctx.send("Nothing is playing.")
 
-    @commands.command()
+    @commands.command(brief="Stop playing and clear the queue.")
     async def stop(self, ctx: commands.Context) -> None:
-        """Stop playback and clear the queue."""
+        """Stop playing and clear the queue. I leave the voice channel after
+        3 minutes with nothing playing."""
         controller = self.controllers.get(ctx.guild.id) if ctx.guild else None
         if controller is None:
             return
         controller.stop()
         await ctx.send("Stopped and cleared the queue.")
 
-    @commands.command()
+    @commands.command(brief="Tell me you like the current song.")
     async def like(self, ctx: commands.Context) -> None:
-        """Tell DaMuse you like the current song."""
+        """Tell me you like the current song, so I pick more like it when
+        you're listening. This counts for much more than listening to a song
+        or skipping it."""
         await self._rate(ctx, "like")
 
-    @commands.command()
+    @commands.command(brief="Tell me you don't like the current song.")
     async def dislike(self, ctx: commands.Context) -> None:
-        """Tell DaMuse you don't like the current song."""
+        """Tell me you don't like the current song, so I pick fewer like it
+        when you're listening. This counts for much more than listening to a
+        song or skipping it."""
         await self._rate(ctx, "dislike")
 
     async def _rate(self, ctx: commands.Context, event_type: str) -> None:
